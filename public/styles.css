@@ -1,5 +1,6 @@
 /* Groupie — 1980s vector arcade. Black phosphor screen, neon wireframes,
-   raster type. Difficulty billing: yellow → green → blue → magenta. */
+   raster type. Difficulty levels: orange → lime → turquoise → red
+   (deliberately not the NYT colour sequence). */
 
 :root {
   --bg: #020308;         /* the dark of the cabinet */
@@ -9,10 +10,10 @@
   --text-dim: #6e93a3;
   --hot: #ff2bd6;        /* magenta accent */
 
-  --g0: #ffe14d;         /* opener — yellow */
-  --g1: #46ff5e;         /* support — green */
-  --g2: #37a6ff;         /* headliner — blue */
-  --g3: #ff2bd6;         /* encore — magenta */
+  --g0: #ff9f1c;         /* level 1 — neon orange */
+  --g1: #b6ff33;         /* level 2 — lime */
+  --g2: #00ffd5;         /* level 3 — turquoise */
+  --g3: #ff3b4e;         /* level 4 — red */
 
   --px: "Press Start 2P", monospace;   /* raster display font */
   --vt: "VT323", monospace;            /* raster body font */

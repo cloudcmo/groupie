@@ -7,7 +7,7 @@
 const ANTHROPIC_MODEL = "claude-sonnet-4-5";
 
 // Difficulty bands, easiest to hardest. The front end shows these as
-// gig-billing tiers: opener → support → headliner → encore.
+// arcade levels 1–4.
 export const DIFFICULTIES = [0, 1, 2, 3];
 
 // ─── The editorial brief ────────────────────────────────────────────────────
@@ -35,13 +35,13 @@ THE FOUR GROUPS
 - Exactly 4 groups of exactly 4 answers; 16 answers, all distinct.
 - Each answer is short: one word or a snappy phrase, 18 characters at most.
 - Assign each group a difficulty 0–3, each used exactly once:
-  0 (opener)   — most players get it: a plain category, warmly familiar.
-  1 (support)  — general knowledge with a British accent.
-  2 (headliner)— knowledge plus a sideways step; connections between things
-                 people know but haven't filed together.
-  3 (encore)   — wordplay: "___ pudding", "words before CASTLE", homophones
-                 of famous Daves, words hiding a fish, and so on. The groan
-                 and the grin.
+  0 (level 1) — most players get it: a plain category, warmly familiar.
+  1 (level 2) — general knowledge with a British accent.
+  2 (level 3) — knowledge plus a sideways step; connections between things
+                people know but haven't filed together.
+  3 (level 4) — wordplay: "___ pudding", "words before CASTLE", homophones
+                of famous Daves, words hiding a fish, and so on. The groan
+                and the grin.
 - Group names are part of the entertainment: precise but with a wink.
   "Cockney for parts of the body", not "Slang terms".
 

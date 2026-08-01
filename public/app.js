@@ -6,9 +6,11 @@
 
   const LIVES = 4;
 
-  // Billing tiers, easiest to hardest. Index = difficulty.
-  const TIER = ["opener", "support", "headliner", "encore"];
-  const EMOJI = ["🟨", "🟩", "🟦", "🟪"];
+  // Difficulty levels, easiest to hardest. Index = difficulty.
+  // Colours run orange → lime → turquoise → red (deliberately not the
+  // NYT sequence), and the share emojis match.
+  const TIER = ["level 1", "level 2", "level 3", "level 4"];
+  const EMOJI = ["🟧", "🟩", "🟦", "🟥"];
 
   // Arcade verdicts, indexed by mistakes made on a win.
   function verdictFor(won, mistakes) {
@@ -191,7 +193,7 @@
 
     app.innerHTML = `
       ${mode === "archive" ? `<div class="banner">back grid — doesn't touch your streak</div>` : ""}
-      ${solved.length === 0 && !finished ? `<p class="brief">Create four groups of four.</p>` : ""}
+      ${solved.length === 0 && !finished ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire.</p>` : ""}
       <div class="board" id="board">
         ${bands}
         ${tiles.length ? `<div class="grid" id="grid">${tiles.map(tileHTML).join("")}</div>` : ""}
@@ -250,9 +252,9 @@
           `<span class="life ${i < LIVES - lives ? "spent" : ""}"></span>`).join("")}
         </div>
         <div class="controls">
-          <button class="pill" id="shuffle-btn">Shuffle</button>
-          <button class="pill" id="deselect-btn">Deselect All</button>
-          <button class="pill loud" id="submit-btn" disabled>Submit</button>
+          <button class="pill" id="shuffle-btn">Scramble</button>
+          <button class="pill" id="deselect-btn">Clear</button>
+          <button class="pill loud" id="submit-btn" disabled>Fire</button>
         </div>
       </div>
     `;
@@ -283,7 +285,7 @@
     const key = picked.slice().sort().join("|");
 
     if (guessKeys.has(key)) {
-      toast("Already tried that one");
+      toast("Already fired that");
       return;
     }
 
@@ -334,7 +336,7 @@
       return;
     }
 
-    toast(best === 3 ? "One away…" : "Not a group");
+    toast(best === 3 ? "Missed by one" : "Miss");
     saveProgress();
     // Refresh the lives dots without a full re-render.
     const dock = app.querySelector(".lives");
