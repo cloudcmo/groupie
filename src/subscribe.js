@@ -92,7 +92,7 @@ async function sendWelcome(apiKey, email) {
       Can't wait until Friday? Today's sixteen are on the board now.
     </p>
     <div style="text-align:center;">
-      <a href="https://groupie.carl-b82.workers.dev/"
+      <a href="https://groupie.fun/"
          style="display:inline-block;border:2px solid #ffe14d;color:#ffe14d;text-decoration:none;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;padding:12px 26px;font-weight:bold;">
         Play today's grid &rarr;
       </a>

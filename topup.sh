@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 DAYS="${1:-30}"
-URL="https://groupie.carl-b82.workers.dev"
+URL="https://groupie.fun"
 
 [ -f .admin-token ] || { echo "No .admin-token file — run setup-deploy.sh first."; exit 1; }
 

@@ -49,7 +49,7 @@ echo "Deploying…"
 npx wrangler deploy
 
 URL=$(npx wrangler deployments list 2>/dev/null | grep -oE 'https://[^ ]*workers.dev' | head -1 || true)
-URL=${URL:-https://groupie.carl-b82.workers.dev}
+URL=${URL:-https://groupie.fun}
 
 # 4. Fill the queue ------------------------------------------------------
 echo ""

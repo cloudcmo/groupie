@@ -11,7 +11,7 @@ and topped up by a daily cron, so once it's running it needs no attention.
 Same architecture as What Word; the games share the Friday newsletter segment
 in Resend.
 
-Live at: https://groupie.carl-b82.workers.dev (after first deploy)
+Live at: https://groupie.fun (after first deploy)
 
 ---
 
@@ -69,7 +69,7 @@ ever runs low.
 ### Check on it
 
 ```bash
-curl https://groupie.carl-b82.workers.dev/api/health
+curl https://groupie.fun/api/health
 # {"today":"2026-08-01","queued":41,"through":"2026-09-10"}
 ```
 
