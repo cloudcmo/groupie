@@ -1,6 +1,8 @@
 name = "groupie"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
+# Keep the workers.dev URL enabled — no deploy (manual or GitHub) can turn it off.
+workers_dev = true
 
 # Static front end — served for every path the Worker doesn't claim.
 [assets]
