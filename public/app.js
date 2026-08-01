@@ -4,11 +4,19 @@
 (() => {
   "use strict";
 
-  const LIVES = 3;
+  const LIVES = 4;
 
   // Billing tiers, easiest to hardest. Index = difficulty.
   const TIER = ["opener", "support", "headliner", "encore"];
   const EMOJI = ["🟨", "🟩", "🟦", "🟪"];
+
+  // Arcade verdicts, indexed by mistakes made on a win.
+  function verdictFor(won, mistakes) {
+    if (!won) return "Game over";
+    return ["Perfect run", "Sharp shooting", "Narrow escape", "Last life"][
+      Math.min(mistakes, 3)
+    ];
+  }
 
   // Built-in specimen grid, so the file plays when opened directly
   // (design work, or the API being unreachable). Never served as a real day.
@@ -321,7 +329,7 @@
 
     if (lives <= 0) {
       finished = true;
-      toast("Out of lives");
+      toast("Game over");
       setTimeout(() => revealRemaining(), 700);
       return;
     }
@@ -367,13 +375,12 @@
   }
 
   function renderResults(won, mistakes, replay, dataArg) {
-    const verdicts = ["Access all areas", "Front row", "In the crowd"];
-    const verdict = won ? verdicts[Math.min(mistakes, 2)] : "Bounced at the door";
+    const verdict = verdictFor(won, mistakes);
     const subline = won
       ? mistakes === 0
         ? "A perfect grid — not one wasted guess."
         : `Solved with ${mistakes} slip${mistakes === 1 ? "" : "s"}.`
-      : "The grid got you today. Tomorrow's another gig.";
+      : "The grid got you today. Insert coin tomorrow.";
 
     const data = dataArg || store.read();
     const streak = data.streak || 0;
@@ -416,10 +423,8 @@
     const rows = guesses
       .map((row) => row.map((gi) => EMOJI[day.groups[gi].difficulty]).join(""))
       .join("\n");
-    const verdict = won
-      ? ["Access all areas", "Front row", "In the crowd"][Math.min(mistakes, 2)]
-      : "Bounced at the door";
-    const text = `Groupie № ${day.number} — ${verdict}\n${rows}\nfour play\n${location.origin.replace(/^https?:\/\//, "")}`;
+    const verdict = verdictFor(won, mistakes).toUpperCase();
+    const text = `Groupie № ${day.number} — ${verdict}\n${rows}\nyour daily four play\n${location.origin.replace(/^https?:\/\//, "")}`;
     if (navigator.share) {
       navigator.share({ text }).catch(() => {});
     } else {
@@ -503,7 +508,7 @@
         <ul class="archive-list">
           ${data.issues.map((it) => {
             const r = played[it.date];
-            const res = r ? (r.won ? `solved · ${r.mistakes} slip${r.mistakes === 1 ? "" : "s"}` : "bounced") : "—";
+            const res = r ? (r.won ? `solved · ${r.mistakes} slip${r.mistakes === 1 ? "" : "s"}` : "game over") : "—";
             return `<li><a href="?date=${it.date}">
               <span>№ ${it.number} · ${prettyDate(it.date)}</span>
               <span class="res">${res}</span>

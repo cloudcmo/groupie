@@ -76,30 +76,30 @@ async function sendWelcome(apiKey, email) {
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
-<body style="background:#141216;font-family:Georgia,serif;margin:0;padding:40px 24px;color:#f2ede4;">
-  <div style="max-width:520px;margin:0 auto;">
-    <div style="text-align:center;border-bottom:3px double #e858a8;padding-bottom:14px;margin-bottom:24px;">
-      <div style="font-size:28px;font-weight:900;letter-spacing:0.06em;color:#f2ede4;">GROUPIE</div>
-      <div style="font-style:italic;font-size:14px;color:#e858a8;">four play</div>
+<body style="background:#020308;font-family:'Courier New',Courier,monospace;margin:0;padding:40px 24px;color:#d8f7ff;">
+  <div style="max-width:520px;margin:0 auto;border:2px solid #00f0ff;padding:28px 24px;">
+    <div style="text-align:center;border-bottom:1px solid #0a4a55;padding-bottom:16px;margin-bottom:24px;">
+      <div style="font-size:26px;font-weight:bold;letter-spacing:0.14em;color:#00f0ff;">GROUPIE</div>
+      <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#ff2bd6;margin-top:6px;">your daily four play</div>
     </div>
 
-    <div style="font-size:19px;margin-bottom:12px;">You're on the list. (The good list.)</div>
-    <p style="font-size:15px;line-height:1.65;margin:0 0 14px;color:#d8d2c6;">
+    <div style="font-size:18px;margin-bottom:12px;color:#46ff5e;">PLAYER READY.</div>
+    <p style="font-size:14px;line-height:1.7;margin:0 0 14px;color:#9fc3d0;">
       Every Friday we send one free games email — the week's best grids from
       Groupie, plus the pub quiz, Whenly and What Word. One email a week, never more.
     </p>
-    <p style="font-size:15px;line-height:1.65;margin:0 0 22px;color:#d8d2c6;">
+    <p style="font-size:14px;line-height:1.7;margin:0 0 22px;color:#9fc3d0;">
       Can't wait until Friday? Today's sixteen are on the board now.
     </p>
     <div style="text-align:center;">
       <a href="https://groupie.carl-b82.workers.dev/"
-         style="display:inline-block;background:#e858a8;color:#141216;text-decoration:none;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;padding:12px 26px;font-weight:bold;">
+         style="display:inline-block;border:2px solid #ffe14d;color:#ffe14d;text-decoration:none;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;padding:12px 26px;font-weight:bold;">
         Play today's grid &rarr;
       </a>
     </div>
 
-    <div style="margin-top:28px;border-top:3px double #e858a8;padding-top:12px;font-size:11px;color:#8f8a80;text-align:center;">
-      Groupie &middot; four groups of four, with British red herrings
+    <div style="margin-top:28px;border-top:1px solid #0a4a55;padding-top:12px;font-size:11px;color:#6e93a3;text-align:center;letter-spacing:0.08em;">
+      GROUPIE &middot; four groups of four &middot; four lives &middot; British red herrings
     </div>
   </div>
 </body>
@@ -114,7 +114,7 @@ async function sendWelcome(apiKey, email) {
     body: JSON.stringify({
       from: "Groupie <hello@pubquizdaily.com>",
       to: [email],
-      subject: "You're in — four play begins",
+      subject: "You're in — your daily four play begins",
       html,
     }),
   });

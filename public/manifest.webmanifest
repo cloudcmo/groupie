@@ -1,11 +1,11 @@
 {
   "name": "Groupie",
   "short_name": "Groupie",
-  "description": "Four groups of four, daily. Four play.",
+  "description": "Your daily four play — four groups of four.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#17141a",
-  "theme_color": "#17141a",
+  "background_color": "#020308",
+  "theme_color": "#020308",
   "icons": [
     { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]

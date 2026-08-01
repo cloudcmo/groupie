@@ -1,9 +1,9 @@
 # Groupie
 
-Four groups of four, daily — "four play". Sixteen words on a grid; sort them
-into four groups before three lives run out. The UK's answer to Connections:
-UK English, UK cultural furniture, and proper red herrings (three Spice Girls
-on the board and GINGER filed under hair colours).
+Your daily four play. Sixteen words on a grid; sort them into four groups of
+four before four lives run out. The UK's answer to Connections: UK English,
+UK cultural furniture, and proper red herrings (three Spice Girls on the
+board and GINGER filed under hair colours).
 
 Runs entirely on Cloudflare: Worker for the API, D1 for the puzzle store,
 static assets for the front end. Grids are set by Claude via the Anthropic API
@@ -19,10 +19,10 @@ Live at: https://groupie.carl-b82.workers.dev (after first deploy)
 
 - Select four tiles, press **Submit**.
 - Right: the group lands at the top of the board in its colour.
-- Wrong: you lose one of **three lives**. If three of your four belonged
+- Wrong: you lose one of **four lives**. If three of your four belonged
   together you're told you were "one away".
 - Difficulty runs opener (yellow) → support (green) → headliner (blue) →
-  encore (pink, the wordplay one).
+  encore (magenta, the wordplay one).
 - Streak, stats and a share grid (🟨🟩🟦🟪 rows) at the end. Streak lives in
   `localStorage` — no accounts, nothing to log into, breaks if you miss a day.
 
@@ -111,10 +111,12 @@ Tiles are shuffled client-side per player, so there's no positional tell.
 
 ## Design
 
-Gig-poster black, cream tiles, and the four billing colours: opener yellow,
-support green, headliner blue, encore hot pink. Anton for the masthead,
-Archivo for everything else. Verdicts keep the backstage register: a clean
-solve is ACCESS ALL AREAS; a loss is BOUNCED AT THE DOOR.
+1980s vector arcade — Battlezone, Tron, the Star Wars cabinet. Black phosphor
+screen, faint wireframe grid and scanlines, neon-glow outlines in the four
+billing colours (opener yellow, support green, headliner blue, encore
+magenta), lives shown as little vector ships. Press Start 2P for the raster
+display type, VT323 for body copy and tiles. Verdicts keep the arcade
+register: a clean solve is PERFECT RUN; a loss is GAME OVER.
 
 ---
 
