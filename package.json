@@ -1,0 +1,16 @@
+{
+  "name": "groupie",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute groupie --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute groupie --remote --file=schema.sql",
+    "seed:local": "wrangler d1 execute groupie --local --file=seed.sql",
+    "seed:remote": "wrangler d1 execute groupie --remote --file=seed.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

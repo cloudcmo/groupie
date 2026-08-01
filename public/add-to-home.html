@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Add Groupie to your Home Screen</title>
+  <meta name="description" content="Put Groupie on your phone's home screen — it opens like an app, no shop, no download." />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#17141a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:ital,wght@0,400;0,600;0,800;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .steps { margin-top: 20px; }
+    .platform {
+      border: 1px solid var(--tile-edge);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      margin-bottom: 14px;
+      background: rgba(242, 237, 228, 0.03);
+    }
+    .platform h2 {
+      font-family: "Anton", sans-serif;
+      font-weight: 400;
+      font-size: 1.15rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin: 0 0 10px;
+      color: var(--accent);
+    }
+    .platform ol { margin: 0; padding-left: 20px; color: var(--paper-dim); font-size: 0.94rem; line-height: 1.7; }
+    .platform li strong { color: var(--paper); }
+    .why { text-align: center; color: var(--faint); font-size: 0.88rem; margin: 18px 0 0; }
+    .backline { text-align: center; margin-top: 26px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="masthead">
+      <div class="issue">on the guest list</div>
+      <h1>GROUPIE</h1>
+      <div class="strap">add it to your home screen</div>
+    </header>
+
+    <main class="steps">
+      <div class="platform">
+        <h2>iPhone &amp; iPad</h2>
+        <ol>
+          <li>Open Groupie in <strong>Safari</strong>.</li>
+          <li>Tap the <strong>Share</strong> button (the square with the arrow).</li>
+          <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+          <li>Tap <strong>Add</strong>. Done — it opens like an app.</li>
+        </ol>
+      </div>
+
+      <div class="platform">
+        <h2>Android</h2>
+        <ol>
+          <li>Open Groupie in <strong>Chrome</strong>.</li>
+          <li>Tap the <strong>⋮</strong> menu, top right.</li>
+          <li>Tap <strong>Add to Home screen</strong> (or <strong>Install app</strong>).</li>
+          <li>Confirm. Done — it opens like an app.</li>
+        </ol>
+      </div>
+
+      <p class="why">No app shop, no download, no updates. It's just the game,
+      one tap from your thumb, every day.</p>
+
+      <div class="backline">
+        <a class="ghost" href="/">← Back to today's grid</a>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

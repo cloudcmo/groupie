@@ -1,0 +1,29 @@
+name = "groupie"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Static front end — served for every path the Worker doesn't claim.
+[assets]
+directory = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "groupie"
+database_id = "6cd5c1cc-beef-49a1-a163-c57e5ede2774"
+
+[vars]
+# Puzzle #1 is this date. Set to your launch date before first deploy.
+EPOCH_DATE = "2026-08-01"
+# The daily cron tops the queue back up to this many days ahead.
+TOPUP_TARGET_DAYS = "45"
+# The Friday games newsletter segment in Resend (shared with Whenly / Pub Quiz Daily / What Word).
+RESEND_SEGMENT_ID = "90610922-0511-40a1-a3d1-2c645d992210"
+
+# If the queue ever falls below LOW_WATER days after a top-up, an alert
+# email goes here (sent via Resend, so RESEND_API_KEY must be set).
+ALERT_EMAIL = "carl@cloudcmo.co.uk"
+
+[triggers]
+# Every day, 06:25 UTC — tops the queue up to TOPUP_TARGET_DAYS.
+# (Offset from What Word's 06:15 so the two crons never contend.)
+crons = ["25 6 * * *"]
