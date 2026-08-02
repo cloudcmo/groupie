@@ -2,3 +2,4 @@ node_modules/
 .wrangler/
 .admin-token
 .DS_Store
+.dev.vars

@@ -14,6 +14,8 @@ export default {
       if (path === "/api/puzzle") return await servePuzzle(url, env, request);
       if (path === "/api/archive") return await serveArchive(env);
       if (path === "/api/health") return await serveHealth(env);
+      if (path === "/api/played") return await servePlayed(request, env);
+      if (path === "/api/stats") return await serveStats(url, env, request);
       if (path === "/api/generate") return await serveGenerate(request, env);
       if (path === "/api/subscribe") return await handleSubscribe(request, env);
       // SEO files are generated here (not static) so they always reflect the
@@ -92,6 +94,65 @@ async function serveHealth(env) {
     .bind(today)
     .first();
   return json({ today, queued: row?.queued || 0, through: row?.through || null }, 200, 0);
+}
+
+// The front end pings this once per player when a grid is finished.
+// Aggregate counts only — no identifiers, nothing personal.
+async function servePlayed(request, env) {
+  if (request.method !== "POST") return json({ error: "POST only" }, 405);
+
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid request" }, 400);
+  }
+
+  const today = todayISO();
+  const date = typeof body.date === "string" ? body.date : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Bad date" }, 400);
+  if (date > today || date < env.EPOCH_DATE) return json({ error: "Bad date" }, 400);
+
+  const won = body.won ? 1 : 0;
+  const mistakes = Math.min(Math.max(parseInt(body.mistakes ?? 0, 10) || 0, 0), 4);
+
+  await env.DB.prepare(
+    `INSERT INTO plays (date, total, wins, mistakes_sum) VALUES (?, 1, ?, ?)
+     ON CONFLICT(date) DO UPDATE SET
+       total = total + 1,
+       wins = wins + excluded.wins,
+       mistakes_sum = mistakes_sum + excluded.mistakes_sum`
+  ).bind(date, won, mistakes).run();
+
+  return json({ ok: true }, 200, 0);
+}
+
+// Play counts for the daily report email. Admin-gated like /api/generate.
+async function serveStats(url, env, request) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`)
+    return json({ error: "Unauthorized" }, 401);
+
+  const date = url.searchParams.get("date") || todayISO();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Bad date" }, 400);
+
+  const day = await env.DB.prepare(
+    "SELECT total, wins, mistakes_sum FROM plays WHERE date = ?"
+  ).bind(date).first();
+
+  const all = await env.DB.prepare(
+    "SELECT COALESCE(SUM(total),0) AS players, COALESCE(SUM(wins),0) AS wins, COUNT(*) AS days FROM plays"
+  ).first();
+
+  const players = day?.total || 0;
+  return json({
+    date,
+    players,
+    wins: day?.wins || 0,
+    solveRate: players ? Math.round(((day?.wins || 0) / players) * 100) : null,
+    avgMistakes: players ? Math.round(((day?.mistakes_sum || 0) / players) * 10) / 10 : null,
+    allTime: { players: all?.players || 0, wins: all?.wins || 0, days: all?.days || 0 },
+  }, 200, 0);
 }
 
 async function serveGenerate(request, env) {

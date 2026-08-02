@@ -86,7 +86,22 @@
     }
     if (data.state) delete data.state[date];
     store.write(data);
+    reportPlay(date, won, mistakes); // first completion of this grid only
     return data;
+  }
+
+  // Tell the server one more player finished this grid. Aggregate count only,
+  // fire-and-forget: a failure must never affect the player.
+  function reportPlay(date, won, mistakes) {
+    if (mode === "builtin") return;
+    try {
+      fetch("/api/played", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, won, mistakes }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch { /* ignore */ }
   }
 
   function saveProgress() {
