@@ -16,6 +16,7 @@ export default {
       if (path === "/api/health") return await serveHealth(env);
       if (path === "/api/played") return await servePlayed(request, env);
       if (path === "/api/stats") return await serveStats(url, env, request);
+      if (path === "/api/docket") return await serveDocket(url, request, env);
       if (path === "/api/generate") return await serveGenerate(request, env);
       if (path === "/api/subscribe") return await handleSubscribe(request, env);
       // SEO files are generated here (not static) so they always reflect the
@@ -94,6 +95,85 @@ async function serveHealth(env) {
     .bind(today)
     .first();
   return json({ today, queued: row?.queued || 0, through: row?.through || null }, 200, 0);
+}
+
+// ─── The cross-game docket ──────────────────────────────────────────────────
+// Shared by all four games' "More daily guff" bars (guff-bar.js): an
+// anonymous browser id reports which games it played today, and reads the
+// merged state back. Cross-origin by design, so full CORS. No identifiers
+// beyond the random id, no auth — the data is four booleans a day.
+
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie"]);
+
+const DOCKET_CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
+};
+
+async function serveDocket(url, request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+
+  const today = todayISO();
+
+  if (request.method === "GET") {
+    const id = url.searchParams.get("id") || "";
+    const date = url.searchParams.get("date") || today;
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
+
+    const row = await env.DB.prepare(
+      "SELECT pqd, whenly, whatword, groupie FROM docket WHERE id = ? AND date = ?"
+    ).bind(id, date).first();
+    return docketJson({ date, played: docketPlayed(row) });
+  }
+
+  if (request.method === "POST") {
+    let body = {};
+    try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+
+    const id = typeof body.id === "string" ? body.id : "";
+    const date = typeof body.date === "string" ? body.date : "";
+    const game = typeof body.game === "string" ? body.game : "";
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+    // Accept today or yesterday (midnight-straddling finishes), nothing else.
+    if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
+
+    // `game` is allowlisted above, so it is safe to splice into the column list.
+    await env.DB.prepare(
+      `INSERT INTO docket (id, date, ${game}) VALUES (?, ?, 1)
+       ON CONFLICT(id, date) DO UPDATE SET ${game} = 1`
+    ).bind(id, date).run();
+
+    const row = await env.DB.prepare(
+      "SELECT pqd, whenly, whatword, groupie FROM docket WHERE id = ? AND date = ?"
+    ).bind(id, date).first();
+    return docketJson({ date, played: docketPlayed(row) });
+  }
+
+  return docketJson({ error: "Method not allowed" }, 405);
+}
+
+function validDocketId(id) {
+  return /^[A-Za-z0-9-]{8,64}$/.test(id);
+}
+
+function docketPlayed(row) {
+  return {
+    pqd: !!row?.pqd,
+    whenly: !!row?.whenly,
+    whatword: !!row?.whatword,
+    groupie: !!row?.groupie,
+  };
+}
+
+function docketJson(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...DOCKET_CORS },
+  });
 }
 
 // The front end pings this once per player when a grid is finished.
@@ -247,6 +327,12 @@ async function fillRange(env, start, days) {
 const LOW_WATER = 7;
 
 async function runScheduled(env, target) {
+  // Prune docket rows older than a fortnight — the bar only ever asks about
+  // today, so old rows are pure dead weight.
+  await env.DB.prepare("DELETE FROM docket WHERE date < ?")
+    .bind(addDays(todayISO(), -14)).run()
+    .catch((err) => console.error("Docket prune failed:", err));
+
   const report = await fillRange(env, todayISO(), target);
   console.log(
     `Top-up: wrote ${report.written.length}, rejected ${report.rejected.length}`,

@@ -15,6 +15,19 @@ CREATE TABLE IF NOT EXISTS plays (
   mistakes_sum INTEGER NOT NULL DEFAULT 0
 );
 
+-- The cross-game docket: which of the four games an anonymous browser id
+-- has played on a given day. Powers the "More daily guff" bar on all four
+-- sites. Rows older than a fortnight are pruned by the daily cron.
+CREATE TABLE IF NOT EXISTS docket (
+  id TEXT NOT NULL,               -- anonymous random id from the player's browser
+  date TEXT NOT NULL,             -- YYYY-MM-DD (UK day)
+  pqd INTEGER NOT NULL DEFAULT 0,
+  whenly INTEGER NOT NULL DEFAULT 0,
+  whatword INTEGER NOT NULL DEFAULT 0,
+  groupie INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id, date)
+);
+
 -- Every group name ever published, so no category is served twice.
 CREATE TABLE IF NOT EXISTS categories (
   name TEXT PRIMARY KEY,          -- lowercased group name

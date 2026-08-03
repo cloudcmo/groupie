@@ -433,6 +433,13 @@
     if (shareBtn) shareBtn.addEventListener("click", () => share(won, mistakes, shareBtn));
     wireSubscribeForm();
 
+    // "More daily guff" — the cross-sell bar shared by all four games
+    const resultsEl = slot.querySelector(".results");
+    if (window.GuffBar && resultsEl) {
+      if (mode === "daily") GuffBar.completedToday(resultsEl);
+      else if (mode === "archive") GuffBar.show(resultsEl);
+    }
+
     slot.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
