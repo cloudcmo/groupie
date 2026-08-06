@@ -35,13 +35,40 @@ THE FOUR GROUPS
 - Exactly 4 groups of exactly 4 answers; 16 answers, all distinct.
 - Each answer is short: one word or a snappy phrase, 18 characters at most.
 - Assign each group a difficulty 0–3, each used exactly once:
-  0 (level 1) — most players get it: a plain category, warmly familiar.
-  1 (level 2) — general knowledge with a British accent.
-  2 (level 3) — knowledge plus a sideways step; connections between things
-                people know but haven't filed together.
-  3 (level 4) — wordplay: "___ pudding", "words before CASTLE", homophones
-                of famous Daves, words hiding a fish, and so on. The groan
-                and the grin.
+  0 (level 1) — most players get it. Either a warmly familiar category
+                ("biscuits for dunking") or a tight synonym cluster
+                ("ways to say drunk": SOZZLED, BLOTTO, LEGLESS, TROLLEYED).
+  1 (level 2) — general knowledge with a British accent, or a
+                physical-property group: things united by how they look or
+                what they do, not what they're called ("things that are
+                tartan", "V-shaped things", "things you shake").
+  2 (level 3) — knowledge plus a sideways step; things people know but
+                haven't filed together. Polysemy shines here: "what BOOT
+                might refer to" (CAR, WELLINGTON, PUSS IN, TO BOOT — four
+                phrases or things that are all a "boot" in some sense).
+  3 (level 4) — wordplay, drawn from this toolkit (vary the tool daily):
+      · blanks: "___ PUDDING", "words before CASTLE"
+      · hidden word at the START: "starting with a fish" (CODDLE, EELY...)
+      · hidden word at the END: "ending in a river" (OVERSEVERN-style —
+        craft real words/phrases whose tails hide the theme)
+      · homophones: "homophones of famous Daves"
+      · CHANGE a letter: "the full English, first letter changed"
+        (JEANS→beans, KEGS→eggs, BOAST→toast, CASH→hash)
+      · ADD a letter: "booze plus a letter" (DALE→ale, DRUM→rum,
+        GRIN→gin, SPORT→port)
+      · REMOVE a letter: "chocolate bars missing their last letter"
+        (WISP→Wispa, FLAK→Flake, BOOS→Boost)
+      · themed anagrams: "anagrams of British rivers" (MASHET→Thames)
+      · spelling patterns: "Y is the only vowel" (MYRRH, RHYTHM),
+        "silent W" (SWORD, WREATH), and kin
+      · truncations: "starts of London boroughs" (HACK, CAM, BARK)
+      The groan and the grin. For letter-surgery groups the tile shows the
+      TRANSFORMED form (the player works backwards), and the group name
+      must state the rule plainly so the reveal is fair.
+- ROTATE the level 4 mechanism: the "categories already used" list below is
+  ordered oldest to newest, so its final entries are the most recent days.
+  Never use the same level 4 tool two days running, and don't let any one
+  tool dominate a week.
 - Group names are part of the entertainment: precise but with a wink.
   "Cockney for parts of the body", not "Slang terms".
 
@@ -92,7 +119,7 @@ export async function generateDay(env, date, usedCategories) {
   const recentUsed = [...usedCategories].slice(-400); // keep the prompt bounded
   const userPrompt =
     `Set the Groupie grid for ${date}.\n\n` +
-    `Categories already used (never reuse these, or near-rewordings of them): ` +
+    `Categories already used, oldest to newest (never reuse these, or near-rewordings of them): ` +
     (recentUsed.length ? recentUsed.join(" | ") : "none yet") +
     `\n\nReturn the JSON object only.`;
 

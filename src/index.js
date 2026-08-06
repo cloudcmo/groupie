@@ -380,7 +380,11 @@ async function sendLowQueueAlert(env, queued, through, rejected) {
 }
 
 async function loadUsedCategories(env) {
-  const { results } = await env.DB.prepare("SELECT name FROM categories").all();
+  // Ordered by date so the generator can see which categories (and which
+  // level-4 wordplay mechanisms) are most recent, and rotate away from them.
+  const { results } = await env.DB.prepare(
+    "SELECT name FROM categories ORDER BY date"
+  ).all();
   return new Set((results || []).map((r) => r.name));
 }
 
