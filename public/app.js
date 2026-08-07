@@ -21,11 +21,15 @@
   }
 
   // ── Solve-order score ────────────────────────────────────────────────────
-  // A correctly fired group banks its level (1–4). On a win the final fire
-  // is a freebie — twelve tiles gone, the last four pick themselves — so
-  // only the first three fires score. Fire hardest-first and leave level 1
-  // till last for the full 9. Lives punish wrong guesses; the score only
-  // ever rewards boldness of order.
+  // A correctly fired group banks its level (1–4) times a boldness weight:
+  // your first fire ×3, second ×2, third ×1. The final fire is a freebie —
+  // twelve tiles gone, the last four pick themselves — so it scores nothing.
+  // A cold open on level 4, straight down the ladder, is 4×3 + 3×2 + 2×1 =
+  // the full 20; the safe easiest-first route banks 10. Lives punish wrong
+  // guesses; the score only ever rewards boldness of order.
+
+  const SCORE_MAX = 20;
+  const WEIGHTS = [3, 2, 1];
 
   function firedOrderFromRows(rows) {
     // A guess row where all four owners match was a correct fire.
@@ -34,17 +38,17 @@
       .map((r) => r[0]);
   }
 
-  function scoreFromRows(rows, won) {
-    const fired = firedOrderFromRows(rows);
-    const active = won ? fired.slice(0, 3) : fired;
-    return active.reduce((s, gi) => s + day.groups[gi].difficulty + 1, 0);
+  function scoreFromRows(rows) {
+    return firedOrderFromRows(rows)
+      .slice(0, 3)
+      .reduce((s, gi, idx) => s + (day.groups[gi].difficulty + 1) * WEIGHTS[idx], 0);
   }
 
   function runningScore() {
     return solved
       .filter((gi) => !revealed.has(gi))
       .slice(0, 3)
-      .reduce((s, gi) => s + day.groups[gi].difficulty + 1, 0);
+      .reduce((s, gi, idx) => s + (day.groups[gi].difficulty + 1) * WEIGHTS[idx], 0);
   }
 
   // Built-in specimen grid, so the file plays when opened directly
@@ -243,7 +247,7 @@
         const chip = isRevealed
           ? ""
           : idx < 3
-            ? ` · +${day.groups[gi].difficulty + 1}`
+            ? ` · +${(day.groups[gi].difficulty + 1) * WEIGHTS[idx]}`
             : " · freebie";
         return bandHTML(day.groups[gi], isRevealed, chip);
       })
@@ -251,7 +255,7 @@
 
     app.innerHTML = `
       ${mode === "archive" ? `<div class="banner">back grid — doesn't touch your streak</div>` : ""}
-      ${solved.length === 0 && !finished ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire. Hard groups score big — the bold fire those first.</p>` : ""}
+      ${solved.length === 0 && !finished ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire. The earlier and harder the group, the bigger the score.</p>` : ""}
       <div class="board" id="board">
         ${bands}
         ${tiles.length ? `<div class="grid" id="grid">${tiles.map(tileHTML).join("")}</div>` : ""}
@@ -432,7 +436,7 @@
 
   function finish(won) {
     const mistakes = LIVES - Math.max(lives, 0);
-    const score = scoreFromRows(guesses, won);
+    const score = scoreFromRows(guesses);
     let data = null;
     if (mode !== "builtin") data = recordResult(day.date, won, mistakes, guesses, score);
     renderResults(won, mistakes, false, data);
@@ -440,10 +444,10 @@
 
   function renderResults(won, mistakes, replay, dataArg) {
     const verdict = verdictFor(won, mistakes);
-    const score = scoreFromRows(guesses, won);
+    const score = scoreFromRows(guesses);
     const subline = won
-      ? score === 9
-        ? "The full nine — hardest first, and the easy group never got a look-in."
+      ? score === SCORE_MAX
+        ? "The full twenty — a cold open on level 4, straight down the ladder."
         : mistakes === 0
           ? "A perfect grid — not one wasted guess."
           : `Solved with ${mistakes} slip${mistakes === 1 ? "" : "s"}.`
@@ -464,7 +468,7 @@
     slot.innerHTML = `
       <div class="results">
         <div class="verdict ${won ? "" : "lost"}">${verdict}</div>
-        <div class="scoreline ${score === 9 ? "full" : ""}">score ${score}<span class="of">/9</span></div>
+        <div class="scoreline ${score === SCORE_MAX ? "full" : ""}">score ${score}<span class="of">/${SCORE_MAX}</span></div>
         <div class="subline">${replay ? "You've already played this grid." : esc(subline)}</div>
         ${streakLine}
         <div class="stats">
@@ -500,8 +504,8 @@
       .map((row) => row.map((gi) => EMOJI[day.groups[gi].difficulty]).join(""))
       .join("\n");
     const verdict = verdictFor(won, mistakes).toUpperCase();
-    const score = scoreFromRows(guesses, won);
-    const text = `Groupie № ${day.number} — ${verdict} — ${score}/9\n${rows}\nyour daily four play\n${location.origin.replace(/^https?:\/\//, "")}`;
+    const score = scoreFromRows(guesses);
+    const text = `Groupie № ${day.number} — ${verdict} — ${score}/${SCORE_MAX}\n${rows}\nyour daily four play\n${location.origin.replace(/^https?:\/\//, "")}`;
     if (navigator.share) {
       navigator.share({ text }).catch(() => {});
     } else {
@@ -585,7 +589,7 @@
         <ul class="archive-list">
           ${data.issues.map((it) => {
             const r = played[it.date];
-            const sc = r && typeof r.score === "number" ? ` · ${r.score}/9` : "";
+            const sc = r && typeof r.score === "number" ? ` · ${r.score}/20` : "";
             const res = r ? (r.won ? `solved${sc} · ${r.mistakes} slip${r.mistakes === 1 ? "" : "s"}` : `game over${sc}`) : "—";
             return `<li><a href="?date=${it.date}">
               <span>№ ${it.number} · ${prettyDate(it.date)}</span>
