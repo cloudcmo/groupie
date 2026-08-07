@@ -132,40 +132,143 @@ Return ONLY a JSON object, no markdown fences, of this exact shape:
     { "name": "...", "difficulty": 2, "words": ["...", "...", "...", "..."] },
     { "name": "...", "difficulty": 3, "words": ["...", "...", "...", "..."] }
   ],
-  "workings": ["one line per level-4 tile showing its derivation, e.g. \\"DALE = D + ALE (ale)\\" or \\"YORKSHIRE → Yorkshire pudding\\""],
+  "wordplay": {
+    "tool": "one of: change-letter, add-letter, remove-letter, anagram, hidden-start, hidden-end, truncation, blank, homophone, spelling, other",
+    "position": "first or last — required for change-letter / add-letter / remove-letter",
+    "pairs": [
+      { "tile": "DALE", "base": "ALE" },
+      { "tile": "...", "base": "..." },
+      { "tile": "...", "base": "..." },
+      { "tile": "...", "base": "..." }
+    ]
+  },
   "trap": "one or two sentences describing the red herrings you set"
 }
-"workings" must contain exactly 4 entries, one per level-4 tile. It is your
-proof of work and is checked; it is never shown to players.`;
+"wordplay" is your proof of work for the level 4 group and it is checked BY
+MACHINE, letter by letter. "tile" is the word exactly as it appears on the
+grid; "base" is the word it derives from (for blanks, the completed phrase;
+for homophones, the word it sounds like; for hidden words, the word hidden;
+for truncations, the full word). Exactly 4 pairs, one per level-4 tile. If
+any pair fails the exact letter check, the whole day is rejected — so spell
+each pair out and verify it yourself before answering. Never shown to
+players.`;
+
+// ─── Machine check: the letter arithmetic ───────────────────────────────────
+// Letter operations are string arithmetic, and string arithmetic belongs to
+// code, not to a language model. The setter declares its mechanism and its
+// tile←base pairs; these checks are exact and free, and they run BEFORE the
+// paid verifier call, so a grid with broken letters costs one API call, not
+// two. Tools that need judgment rather than counting (blanks, homophones,
+// spelling patterns) pass through to the verifier untouched.
+
+const WORDPLAY_TOOLS = [
+  "change-letter", "add-letter", "remove-letter", "anagram",
+  "hidden-start", "hidden-end", "truncation",
+  "blank", "homophone", "spelling", "other",
+];
+const SURGERY_TOOLS = new Set(["change-letter", "add-letter", "remove-letter"]);
+
+export function checkWordplay(wp, level4Words) {
+  if (!wp || typeof wp !== "object")
+    return "Missing wordplay object — the level 4 group must declare its mechanism";
+  if (!WORDPLAY_TOOLS.includes(wp.tool))
+    return `wordplay.tool must be one of: ${WORDPLAY_TOOLS.join(", ")}`;
+  if (SURGERY_TOOLS.has(wp.tool) && wp.position !== "first" && wp.position !== "last")
+    return 'wordplay.position must be "first" or "last" for letter surgery';
+  if (!Array.isArray(wp.pairs) || wp.pairs.length !== 4)
+    return "wordplay.pairs must contain exactly 4 entries, one per level-4 tile";
+
+  const tilesSeen = new Set();
+  for (const p of wp.pairs) {
+    if (!p || typeof p.tile !== "string" || typeof p.base !== "string")
+      return "each wordplay pair needs a tile and a base, both strings";
+    const tile = p.tile.trim().toUpperCase();
+    const base = p.base.trim().toUpperCase();
+    if (!level4Words.has(tile))
+      return `wordplay pair tile "${tile}" is not a word in the level 4 group`;
+    if (tilesSeen.has(tile)) return `wordplay pair tile "${tile}" listed twice`;
+    tilesSeen.add(tile);
+    if (!base) return `wordplay pair for "${tile}" has an empty base`;
+    const problem = checkPair(wp.tool, wp.position, tile, base);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+function checkPair(tool, pos, tile, base) {
+  const fail = (why) => `letter check failed for ${tile} ← ${base}: ${why}`;
+  switch (tool) {
+    case "change-letter": {
+      if (tile === base) return fail("tile is identical to its base — nothing changed");
+      if (tile.length !== base.length)
+        return fail(`lengths differ (${tile.length} vs ${base.length})`);
+      if (pos === "first") {
+        if (tile.slice(1) !== base.slice(1))
+          return fail("letters after position one are not identical");
+      } else if (tile.slice(0, -1) !== base.slice(0, -1)) {
+        return fail("letters before the last are not identical");
+      }
+      return null;
+    }
+    case "add-letter": {
+      if (tile.length !== base.length + 1)
+        return fail("tile must be exactly one letter longer than its base");
+      if (pos === "first" ? tile.slice(1) !== base : tile.slice(0, -1) !== base)
+        return fail(`tile is not its base with one letter added at the ${pos}`);
+      return null;
+    }
+    case "remove-letter": {
+      if (tile.length !== base.length - 1)
+        return fail("tile must be exactly one letter shorter than its base");
+      if (pos === "first" ? tile !== base.slice(1) : tile !== base.slice(0, -1))
+        return fail(`tile is not its base minus the ${pos} letter`);
+      return null;
+    }
+    case "anagram": {
+      const letters = (w) => w.replace(/[^A-Z]/g, "").split("").sort().join("");
+      if (tile === base) return fail("tile is identical to its base");
+      if (letters(tile) !== letters(base)) return fail("tile is not an anagram of its base");
+      return null;
+    }
+    case "hidden-start":
+      return tile.startsWith(base) ? null : fail("tile does not start with its base word");
+    case "hidden-end":
+      return tile.endsWith(base) ? null : fail("tile does not end with its base word");
+    case "truncation":
+      return base.startsWith(tile) && tile.length < base.length
+        ? null
+        : fail("tile is not the start of its base word");
+    default:
+      return null; // blank / homophone / spelling / other — the verifier judges these
+  }
+}
 
 // ─── Second pass: adversarial verification ──────────────────────────────────
-// The generator is imaginative; this pass is ruthless. Every day must survive
-// a fact-check by a fresh call that is told to look for exactly the failure
-// modes we have seen in the wild (untransformed originals, off-by-one letter
-// surgery, invented base items, self-contradictory workings).
+// The generator is imaginative; this pass is ruthless. The letter arithmetic
+// has already been machine-checked by the time a grid reaches here, so this
+// call spends its attention purely on knowledge and fairness — the things
+// only a well-read checker can judge.
 
 const VERIFY_PROMPT = `You are the fact-checker for Groupie, a British
 word-grouping puzzle. You are given one day's puzzle plus the setter's
-"workings" for the wordplay group. Your job is to REJECT anything unsound.
+declared wordplay mechanism and tile←base pairs for the level 4 group.
+The letter arithmetic has ALREADY been verified by machine — do not
+re-count letters. Your job is knowledge and fairness. REJECT anything
+unsound.
 
 CHECK, in order:
-1. Wordplay exactness. For any group whose name states a letter operation
-   ("first letter changed/removed/added", "anagrams of", etc.), take each
-   tile and its claimed base and write BOTH out letter by letter. "First
-   letter changed" requires identical length and identical letters except
-   position one. "Removed" requires exactly that letter gone. "Added"
-   requires exactly one letter inserted. The operation must act at the SAME
-   position in all four tiles AND match the position the group name states —
-   three front-of-word transforms plus one mid-word transform is a fail. An
-   untransformed member of the base set appearing as a tile is an automatic
-   fail. A base that is not a real, well-known member of the stated set
-   (a real football club, a real river) is a fail. House rules ban mid-word
-   surgery: any letter operation at a position other than the very first or
-   very last letter (e.g. "middle letter removed") is an automatic fail.
-2. Membership truth. Every word in every group must genuinely belong to the
-   group as named, in a UK frame. One wrong member is a fail.
-3. Coherence. If the workings contradict the tiles, or hedge ("no, wait"),
-   fail.
+1. Real bases. Every "base" must be a real, well-known member of the set
+   the group name claims — a real football club, a real river, a real
+   cheese. An invented, obscure or wrong-set base is a fail.
+2. No untransformed members. If any TILE is itself a genuine member of
+   the base set (WELLS appearing in "cities, first letter changed" —
+   Wells is a real city), automatic fail.
+3. Name honesty. The group name must state the declared tool and position
+   plainly enough that the reveal is fair, and must match the declared
+   mechanism — "first letter changed" must not be sold as anagrams.
+   Mid-word operations are banned by house rules; fail them.
+4. Membership truth. Every word in every group must genuinely belong to
+   the group as named, in a UK frame. One wrong member is a fail.
 Do NOT fail a puzzle for being easy, hard, or stylistically dull — soundness
 only.
 
@@ -176,7 +279,7 @@ give your verdict as a single JSON object on its own line, no fences:
 When in doubt, fail — a skipped day is recoverable, a nonsense day is not.`;
 
 async function verifyGrid(env, parsed) {
-  const puzzle = JSON.stringify({ groups: parsed.groups, workings: parsed.workings });
+  const puzzle = JSON.stringify({ groups: parsed.groups, wordplay: parsed.wordplay });
   let raw;
   try {
     // Roomy token budget: the checker writes its working out in prose
@@ -270,14 +373,6 @@ export function validateDay(parsed, usedCategories, recentGroups = []) {
   if (!parsed || !Array.isArray(parsed.groups)) return "No groups array";
   if (parsed.groups.length !== 4) return "Need exactly 4 groups";
 
-  // Proof of work for the wordplay group.
-  if (!Array.isArray(parsed.workings) || parsed.workings.length !== 4)
-    return "Missing workings — the level 4 group must show its derivations";
-  if (parsed.workings.some((w) => typeof w !== "string" || w.trim().length < 5))
-    return "Workings too thin";
-  if (parsed.workings.some((w) => /no,? wait|reconsider|actually,|hmm/i.test(w)))
-    return "Workings contain hedging — the setter is unsure of its own group";
-
   const difficultiesSeen = new Set();
   const namesSeen = new Set();
   const wordsSeen = new Set();
@@ -309,6 +404,16 @@ export function validateDay(parsed, usedCategories, recentGroups = []) {
       wordsSeen.add(clean);
     }
   }
+
+  // Proof of work for the wordplay group: a declared mechanism plus
+  // tile←base pairs, checked by machine. This is the deterministic gate —
+  // broken letter arithmetic cannot pass it, whatever the model claims.
+  const level4 = parsed.groups.find((g) => g && g.difficulty === 3);
+  const level4Words = new Set(
+    ((level4 && level4.words) || []).map((w) => String(w).trim().toUpperCase())
+  );
+  const wordplayProblem = checkWordplay(parsed.wordplay, level4Words);
+  if (wordplayProblem) return wordplayProblem;
 
   if (typeof parsed.trap !== "string" || parsed.trap.trim().length < 20)
     return "No trap described — a grid without red herrings is a sort, not a puzzle";
