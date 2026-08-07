@@ -455,12 +455,16 @@
   function renderResults(won, mistakes, replay, dataArg) {
     const verdict = verdictFor(won, mistakes);
     const score = scoreFromRows(guesses);
+    // The verdict handles survival (lives); this line coaches the score.
+    // Completion always reads as a win — the order is the second-order game.
     const subline = won
       ? score === SCORE_MAX
         ? "The full twenty-four — a cold open on level 4, straight down the ladder, sweep and all."
-        : mistakes === 0
-          ? "A perfect grid — not one wasted guess."
-          : `Solved with ${mistakes} slip${mistakes === 1 ? "" : "s"}.`
+        : score >= 20
+          ? "A whisker off the full 24 — the purists fire 4, 3, 2 and take the easy one on the house."
+          : score >= 14
+            ? "Grid cleared. Bigger scores go to the bold: hardest groups first, easiest saved for last."
+            : "Cleared it the sensible way. The high scores open on level 4 — if you dare."
       : "The grid got you today. Insert coin tomorrow.";
 
     const data = dataArg || store.read();
