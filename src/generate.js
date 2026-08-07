@@ -54,8 +54,8 @@ THE FOUR GROUPS
       · homophones: "homophones of famous Daves"
       · CHANGE a letter: "the full English, first letter changed"
         (JEANS→beans, KEGS→eggs, BOAST→toast, CASH→hash)
-      · ADD a letter: "booze plus a letter" (DALE→ale, DRUM→rum,
-        GRIN→gin, SPORT→port)
+      · ADD a letter: "booze, one letter added at the start" (DALE→ale,
+        DRUM→rum, SWINE→wine, SPORT→port)
       · REMOVE a letter: "chocolate bars missing their last letter"
         (WISP→Wispa, FLAK→Flake, BOOS→Boost)
       · themed anagrams: "anagrams of British rivers" (MASHET→Thames)
@@ -72,6 +72,11 @@ LETTER-SURGERY RULES (non-negotiable — one sloppy tile ruins the day)
   position one. "First letter removed" means: the base minus exactly its
   first letter, nothing else. "One letter added" means: the base with
   exactly one letter inserted. No looser interpretation is ever acceptable.
+- The operation must act at the SAME position in every tile, and the group
+  name must say which position: "first letter changed", "one letter added
+  at the start", "last letter removed". Three tiles transformed at the
+  front and one in the middle is unfair — the player learns the rule from
+  three tiles and is betrayed by the fourth.
 - NEVER include an untransformed member of the base set as a tile. If the
   group is "football clubs, first letter changed", FULHAM cannot appear.
 - Before committing to a letter-surgery group, spell out each base and each
@@ -143,10 +148,12 @@ CHECK, in order:
    tile and its claimed base and write BOTH out letter by letter. "First
    letter changed" requires identical length and identical letters except
    position one. "Removed" requires exactly that letter gone. "Added"
-   requires exactly one letter inserted. An untransformed member of the
-   base set appearing as a tile is an automatic fail. A base that is not a
-   real, well-known member of the stated set (a real football club, a real
-   river) is a fail.
+   requires exactly one letter inserted. The operation must act at the SAME
+   position in all four tiles AND match the position the group name states —
+   three front-of-word transforms plus one mid-word transform is a fail. An
+   untransformed member of the base set appearing as a tile is an automatic
+   fail. A base that is not a real, well-known member of the stated set
+   (a real football club, a real river) is a fail.
 2. Membership truth. Every word in every group must genuinely belong to the
    group as named, in a UK frame. One wrong member is a fail.
 3. Coherence. If the workings contradict the tiles, or hedge ("no, wait"),
