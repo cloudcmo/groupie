@@ -247,7 +247,9 @@ async function serveGenerate(request, env) {
   } catch {}
   const days = Math.min(Math.max(parseInt(body.days || "7", 10), 1), 60);
 
-  const report = await fillRange(env, todayISO(), days);
+  // One generation per HTTP request: a day now costs two model calls, and
+  // Cloudflare's edge cuts long requests off. The topup script loops instead.
+  const report = await fillRange(env, todayISO(), days, 1);
   return json(report, 200, 0);
 }
 
@@ -286,20 +288,27 @@ async function serveSitemap(url, env) {
 
 // Fill every missing date in [start, start + days). Rejected days are
 // skipped, not retried — run again to fill the gaps.
-async function fillRange(env, start, days) {
+// Scans `days` dates from `start` and fills the missing ones, attempting at
+// most `maxAttempts` generations (each = 2 model calls) per invocation so no
+// single request outstays Cloudflare's welcome. Skipped dates are simply
+// picked up by the next call.
+async function fillRange(env, start, days, maxAttempts = 1) {
   const written = [];
   const rejected = [];
+  let attempts = 0;
 
   const usedCategories = await loadUsedCategories(env);
   const recentGroups = await loadRecentGroups(env);
 
   for (let i = 0; i < days; i++) {
+    if (attempts >= maxAttempts) break;
     const date = addDays(start, i);
     const exists = await env.DB.prepare("SELECT 1 FROM days WHERE date = ?")
       .bind(date)
       .first();
     if (exists) continue;
 
+    attempts++;
     const result = await generateDay(env, date, usedCategories, recentGroups);
     if (!result.ok) {
       rejected.push({ date, reason: result.reason });
@@ -352,7 +361,9 @@ async function runScheduled(env, target) {
     .bind(addDays(todayISO(), -14)).run()
     .catch((err) => console.error("Docket prune failed:", err));
 
-  const report = await fillRange(env, todayISO(), target);
+  // The scheduled context has far roomier limits than an HTTP request, so
+  // the cron may attempt several days per morning.
+  const report = await fillRange(env, todayISO(), target, 6);
   console.log(
     `Top-up: wrote ${report.written.length}, rejected ${report.rejected.length}`,
     report.rejected
