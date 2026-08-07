@@ -256,6 +256,24 @@ body::after {
   transform: scale(0.85);
 }
 
+/* Lives and the running score sit shoulder to shoulder above the controls. */
+.meters {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+.scorebox {
+  font-family: var(--px);
+  font-size: 0.5rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.scorebox .n {
+  color: var(--line);
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+}
+
 .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 
 button.pill, a.ghost, button.ghost {
@@ -345,6 +363,23 @@ button.pill.loud:disabled {
   text-shadow: 0 0 8px rgba(255, 43, 214, 0.7), 0 0 24px rgba(255, 43, 214, 0.35);
 }
 
+/* The solve-order score: 4/3/2 for the groups fired under uncertainty,
+   the last one's a freebie. 9 is the flex, and it glows accordingly. */
+.scoreline {
+  margin-top: 10px;
+  font-family: var(--px);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--line);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.55);
+}
+.scoreline .of { opacity: 0.55; }
+.scoreline.full {
+  color: var(--g3);
+  text-shadow: 0 0 8px rgba(255, 59, 78, 0.75), 0 0 26px rgba(255, 59, 78, 0.4);
+}
+
 .subline { color: var(--text-dim); font-size: 1.05rem; margin-top: 8px; }
 
 .streak {
@@ -360,7 +395,8 @@ button.pill.loud:disabled {
 .stats {
   display: flex;
   justify-content: center;
-  gap: 30px;
+  gap: 24px;
+  flex-wrap: wrap;
   margin: 16px 0 6px;
 }
 .stat { text-align: center; }

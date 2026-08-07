@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS plays (
   date TEXT PRIMARY KEY,          -- the puzzle's date (archive plays count against their grid)
   total INTEGER NOT NULL DEFAULT 0,
   wins INTEGER NOT NULL DEFAULT 0,
-  mistakes_sum INTEGER NOT NULL DEFAULT 0
+  mistakes_sum INTEGER NOT NULL DEFAULT 0,
+  score_sum INTEGER NOT NULL DEFAULT 0    -- solve-order scores (0–9 each), for the daily average
 );
 
 -- The cross-game docket: which of the four games an anonymous browser id

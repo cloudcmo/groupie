@@ -195,14 +195,17 @@ async function servePlayed(request, env) {
 
   const won = body.won ? 1 : 0;
   const mistakes = Math.min(Math.max(parseInt(body.mistakes ?? 0, 10) || 0, 0), 4);
+  // Solve-order score: 0–9, the sum of levels fired under uncertainty.
+  const score = Math.min(Math.max(parseInt(body.score ?? 0, 10) || 0, 0), 9);
 
   await env.DB.prepare(
-    `INSERT INTO plays (date, total, wins, mistakes_sum) VALUES (?, 1, ?, ?)
+    `INSERT INTO plays (date, total, wins, mistakes_sum, score_sum) VALUES (?, 1, ?, ?, ?)
      ON CONFLICT(date) DO UPDATE SET
        total = total + 1,
        wins = wins + excluded.wins,
-       mistakes_sum = mistakes_sum + excluded.mistakes_sum`
-  ).bind(date, won, mistakes).run();
+       mistakes_sum = mistakes_sum + excluded.mistakes_sum,
+       score_sum = score_sum + excluded.score_sum`
+  ).bind(date, won, mistakes, score).run();
 
   return json({ ok: true }, 200, 0);
 }
@@ -217,7 +220,7 @@ async function serveStats(url, env, request) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Bad date" }, 400);
 
   const day = await env.DB.prepare(
-    "SELECT total, wins, mistakes_sum FROM plays WHERE date = ?"
+    "SELECT total, wins, mistakes_sum, score_sum FROM plays WHERE date = ?"
   ).bind(date).first();
 
   const all = await env.DB.prepare(
@@ -231,6 +234,7 @@ async function serveStats(url, env, request) {
     wins: day?.wins || 0,
     solveRate: players ? Math.round(((day?.wins || 0) / players) * 100) : null,
     avgMistakes: players ? Math.round(((day?.mistakes_sum || 0) / players) * 10) / 10 : null,
+    avgScore: players ? Math.round(((day?.score_sum || 0) / players) * 10) / 10 : null,
     allTime: { players: all?.players || 0, wins: all?.wins || 0, days: all?.days || 0 },
   }, 200, 0);
 }
