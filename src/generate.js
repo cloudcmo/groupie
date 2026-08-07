@@ -161,7 +161,9 @@ CHECK, in order:
 Do NOT fail a puzzle for being easy, hard, or stylistically dull — soundness
 only.
 
-Respond ONLY with JSON, no fences:
+Do your letter-by-letter working in plain text first — you cannot check
+spelling without writing the words out. Then, as the FINAL thing you write,
+give your verdict as a single JSON object on its own line, no fences:
 {"verdict":"pass"} or {"verdict":"fail","problems":["specific problem", "..."]}
 When in doubt, fail — a skipped day is recoverable, a nonsense day is not.`;
 
@@ -169,18 +171,20 @@ async function verifyGrid(env, parsed) {
   const puzzle = JSON.stringify({ groups: parsed.groups, workings: parsed.workings });
   let raw;
   try {
-    raw = await callAnthropic(env, VERIFY_PROMPT, `Verify this puzzle:\n${puzzle}`, 0);
+    // Roomy token budget: the checker writes its working out in prose
+    // before the verdict, and a truncated reply would read as a parse
+    // failure and cost us the day.
+    raw = await callAnthropic(env, VERIFY_PROMPT, `Verify this puzzle:\n${puzzle}`, 0, 4000);
   } catch (err) {
     // If the checker itself is unreachable, fail closed: better to write
     // nothing than to write unverified wordplay.
     return { ok: false, reason: `verifier unavailable: ${err.message}` };
   }
-  let verdict;
-  try {
-    verdict = JSON.parse(stripFences(raw));
-  } catch {
+  // The verdict is the LAST JSON object in the reply — everything before
+  // it is the checker's letter-by-letter working.
+  const verdict = extractJson(raw);
+  if (!verdict || typeof verdict.verdict !== "string")
     return { ok: false, reason: "verifier returned invalid JSON" };
-  }
   if (verdict.verdict === "pass") return { ok: true };
   const problems = Array.isArray(verdict.problems) ? verdict.problems.join("; ") : "unspecified";
   return { ok: false, reason: `verifier: ${problems}` };
@@ -208,12 +212,8 @@ export async function generateDay(env, date, usedCategories, recentGroups = []) 
     return { ok: false, reason: `API error: ${err.message}` };
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(stripFences(raw));
-  } catch {
-    return { ok: false, reason: "Model did not return valid JSON" };
-  }
+  const parsed = extractJson(raw);
+  if (!parsed) return { ok: false, reason: "Model did not return valid JSON" };
 
   const problem = validateDay(parsed, usedCategories, recentGroups);
   if (problem) return { ok: false, reason: problem };
@@ -307,7 +307,7 @@ export function validateDay(parsed, usedCategories, recentGroups = []) {
 
 // ─── Anthropic ──────────────────────────────────────────────────────────────
 
-async function callAnthropic(env, system, user, temperature = 1) {
+async function callAnthropic(env, system, user, temperature = 1, maxTokens = 3000) {
   if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not set");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -318,7 +318,7 @@ async function callAnthropic(env, system, user, temperature = 1) {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 2500,
+      max_tokens: maxTokens,
       temperature,
       system,
       messages: [{ role: "user", content: user }],
@@ -345,4 +345,45 @@ function stripFences(text) {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/, "")
     .trim();
+}
+
+// Pull a JSON object out of a completion that may wrap it in prose or
+// fences. Models asked for "JSON only" still narrate sometimes — and the
+// verifier is explicitly invited to show its working before the verdict —
+// so scan for balanced top-level {...} spans and return the LAST one that
+// parses (the final answer, not a worked example along the way).
+function extractJson(text) {
+  const cleaned = stripFences(text);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    /* fall through to the scan */
+  }
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  let found = null;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = inString; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        try {
+          found = JSON.parse(cleaned.slice(start, i + 1));
+        } catch {
+          /* not valid JSON — keep scanning */
+        }
+        start = -1;
+      }
+    }
+  }
+  return found;
 }
