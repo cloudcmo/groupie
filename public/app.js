@@ -24,12 +24,16 @@
   // A correctly fired group banks its level (1–4) times a boldness weight:
   // your first fire ×3, second ×2, third ×1. The final fire is a freebie —
   // twelve tiles gone, the last four pick themselves — so it scores nothing.
-  // A cold open on level 4, straight down the ladder, is 4×3 + 3×2 + 2×1 =
-  // the full 20; the safe easiest-first route banks 10. Lives punish wrong
-  // guesses; the score only ever rewards boldness of order.
+  // Leaving LEVEL 1 as that freebie means you actively fired all three hard
+  // groups: that's the clean sweep, worth a 4-point bonus. So the perfect
+  // game — 4, 3, 2, then the easy one on the house — is 12 + 6 + 2 + 4 =
+  // the full 24 (one point per possible firing order, pleasingly). The safe
+  // easiest-first route banks 10. Lives punish wrong guesses; the score
+  // only ever rewards boldness of order.
 
-  const SCORE_MAX = 20;
+  const SCORE_MAX = 24;
   const WEIGHTS = [3, 2, 1];
+  const SWEEP_BONUS = 4;
 
   function firedOrderFromRows(rows) {
     // A guess row where all four owners match was a correct fire.
@@ -39,9 +43,13 @@
   }
 
   function scoreFromRows(rows) {
-    return firedOrderFromRows(rows)
+    const fired = firedOrderFromRows(rows);
+    const base = fired
       .slice(0, 3)
       .reduce((s, gi, idx) => s + (day.groups[gi].difficulty + 1) * WEIGHTS[idx], 0);
+    const sweep =
+      fired.length === 4 && day.groups[fired[3]].difficulty === 0 ? SWEEP_BONUS : 0;
+    return base + sweep;
   }
 
   function runningScore() {
@@ -248,14 +256,16 @@
           ? ""
           : idx < 3
             ? ` · +${(day.groups[gi].difficulty + 1) * WEIGHTS[idx]}`
-            : " · freebie";
+            : day.groups[gi].difficulty === 0
+              ? ` · sweep +${SWEEP_BONUS}`
+              : " · freebie";
         return bandHTML(day.groups[gi], isRevealed, chip);
       })
       .join("");
 
     app.innerHTML = `
       ${mode === "archive" ? `<div class="banner">back grid — doesn't touch your streak</div>` : ""}
-      ${solved.length === 0 && !finished ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire. The earlier and harder the group, the bigger the score.</p>` : ""}
+      ${solved.length === 0 && !finished ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire. Hard groups early score big — save the easiest for last.</p>` : ""}
       <div class="board" id="board">
         ${bands}
         ${tiles.length ? `<div class="grid" id="grid">${tiles.map(tileHTML).join("")}</div>` : ""}
@@ -447,7 +457,7 @@
     const score = scoreFromRows(guesses);
     const subline = won
       ? score === SCORE_MAX
-        ? "The full twenty — a cold open on level 4, straight down the ladder."
+        ? "The full twenty-four — a cold open on level 4, straight down the ladder, sweep and all."
         : mistakes === 0
           ? "A perfect grid — not one wasted guess."
           : `Solved with ${mistakes} slip${mistakes === 1 ? "" : "s"}.`
@@ -589,7 +599,7 @@
         <ul class="archive-list">
           ${data.issues.map((it) => {
             const r = played[it.date];
-            const sc = r && typeof r.score === "number" ? ` · ${r.score}/20` : "";
+            const sc = r && typeof r.score === "number" ? ` · ${r.score}/24` : "";
             const res = r ? (r.won ? `solved${sc} · ${r.mistakes} slip${r.mistakes === 1 ? "" : "s"}` : `game over${sc}`) : "—";
             return `<li><a href="?date=${it.date}">
               <span>№ ${it.number} · ${prettyDate(it.date)}</span>

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS plays (
   total INTEGER NOT NULL DEFAULT 0,
   wins INTEGER NOT NULL DEFAULT 0,
   mistakes_sum INTEGER NOT NULL DEFAULT 0,
-  score_sum INTEGER NOT NULL DEFAULT 0    -- solve-order scores (0–20 each), for the daily average
+  score_sum INTEGER NOT NULL DEFAULT 0    -- solve-order scores (0–24 each), for the daily average
 );
 
 -- The cross-game docket: which of the four games an anonymous browser id

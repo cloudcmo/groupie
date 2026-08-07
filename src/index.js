@@ -195,9 +195,10 @@ async function servePlayed(request, env) {
 
   const won = body.won ? 1 : 0;
   const mistakes = Math.min(Math.max(parseInt(body.mistakes ?? 0, 10) || 0, 0), 4);
-  // Solve-order score: 0–20 — each fired level × a boldness weight
-  // (first fire ×3, second ×2, third ×1, the forced last fire ×0).
-  const score = Math.min(Math.max(parseInt(body.score ?? 0, 10) || 0, 0), 20);
+  // Solve-order score: 0–24 — each fired level × a boldness weight
+  // (first fire ×3, second ×2, third ×1, forced last fire ×0), plus a
+  // 4-point clean-sweep bonus for leaving level 1 as the freebie.
+  const score = Math.min(Math.max(parseInt(body.score ?? 0, 10) || 0, 0), 24);
 
   await env.DB.prepare(
     `INSERT INTO plays (date, total, wins, mistakes_sum, score_sum) VALUES (?, 1, ?, ?, ?)
