@@ -52,12 +52,12 @@ THE FOUR GROUPS
       · hidden word at the END: "ending in a river" (OVERSEVERN-style —
         craft real words/phrases whose tails hide the theme)
       · homophones: "homophones of famous Daves"
-      · CHANGE a letter: "the full English, first letter changed"
-        (JEANS→beans, KEGS→eggs, BOAST→toast, CASH→hash)
-      · ADD a letter: "booze, one letter added at the start" (DALE→ale,
-        DRUM→rum, SWINE→wine, SPORT→port)
-      · REMOVE a letter: "chocolate bars missing their last letter"
-        (WISP→Wispa, FLAK→Flake, BOOS→Boost)
+      · CHANGE the FIRST or LAST letter: "the full English, first letter
+        changed" (JEANS→beans, KEGS→eggs, BOAST→toast, CASH→hash)
+      · ADD a letter at the START or END: "booze, one letter added at the
+        start" (DALE→ale, DRUM→rum, SWINE→wine, SPORT→port)
+      · REMOVE the FIRST or LAST letter: "chocolate bars missing their
+        last letter" (WISP→Wispa, FLAK→Flake, BOOS→Boost)
       · themed anagrams: "anagrams of British rivers" (MASHET→Thames)
       · spelling patterns: "Y is the only vowel" (MYRRH, RHYTHM),
         "silent W" (SWORD, WREATH), and kin
@@ -67,6 +67,12 @@ THE FOUR GROUPS
       must state the rule plainly so the reveal is fair.
 
 LETTER-SURGERY RULES (non-negotiable — one sloppy tile ruins the day)
+- Surgery may ONLY touch the FIRST or the LAST letter of a word. Mid-word
+  operations ("middle letter removed", "second letter changed") are BANNED
+  outright — counting positions inside a word is where these groups die.
+- Letter surgery is the highest-failure tool in the kit. Reach for blanks,
+  homophones and hidden words more often; attempt surgery only when four
+  flawless first-or-last-letter tiles come to you easily.
 - The stated operation must hold EXACTLY, letter by letter, for every tile.
   "First letter changed" means: same length, every letter identical except
   position one. "First letter removed" means: the base minus exactly its
@@ -153,7 +159,9 @@ CHECK, in order:
    three front-of-word transforms plus one mid-word transform is a fail. An
    untransformed member of the base set appearing as a tile is an automatic
    fail. A base that is not a real, well-known member of the stated set
-   (a real football club, a real river) is a fail.
+   (a real football club, a real river) is a fail. House rules ban mid-word
+   surgery: any letter operation at a position other than the very first or
+   very last letter (e.g. "middle letter removed") is an automatic fail.
 2. Membership truth. Every word in every group must genuinely belong to the
    group as named, in a UK frame. One wrong member is a fail.
 3. Coherence. If the workings contradict the tiles, or hedge ("no, wait"),
