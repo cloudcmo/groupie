@@ -199,10 +199,27 @@ async function verifyGrid(env, parsed) {
  */
 export async function generateDay(env, date, usedCategories, recentGroups = []) {
   const recentUsed = [...usedCategories].slice(-400); // keep the prompt bounded
+
+  // Show the setter the WORDS of recent grids, not just the category names.
+  // Without this it cannot know a crowd-pleaser idea ("things that can be
+  // golden") is already banked, and it re-proposes the same group over and
+  // over — each attempt a paid API call the repeat-blocker then throws away.
+  // Newest sets come first from the loader; sets written this run are
+  // appended at the end, so keep both ends when trimming.
+  const promptSets =
+    recentGroups.length <= 60
+      ? recentGroups
+      : [...recentGroups.slice(0, 48), ...recentGroups.slice(-12)];
+  const takenSets = promptSets.map((s) => `[${[...s].join(", ")}]`).join(" ");
+
   const userPrompt =
     `Set the Groupie grid for ${date}.\n\n` +
     `Categories already used, oldest to newest (never reuse these, or near-rewordings of them): ` +
     (recentUsed.length ? recentUsed.join(" | ") : "none yet") +
+    `\n\nGroups already published or banked, as word-sets. NEVER rebuild one of ` +
+    `these sets under any name — a new group may share at most TWO words with ` +
+    `any one set below. Fresh material beats familiar material: ` +
+    (takenSets || "none yet") +
     `\n\nReturn the JSON object only.`;
 
   let raw;
