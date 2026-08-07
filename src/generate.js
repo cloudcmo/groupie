@@ -65,6 +65,22 @@ THE FOUR GROUPS
       The groan and the grin. For letter-surgery groups the tile shows the
       TRANSFORMED form (the player works backwards), and the group name
       must state the rule plainly so the reveal is fair.
+
+LETTER-SURGERY RULES (non-negotiable — one sloppy tile ruins the day)
+- The stated operation must hold EXACTLY, letter by letter, for every tile.
+  "First letter changed" means: same length, every letter identical except
+  position one. "First letter removed" means: the base minus exactly its
+  first letter, nothing else. "One letter added" means: the base with
+  exactly one letter inserted. No looser interpretation is ever acceptable.
+- NEVER include an untransformed member of the base set as a tile. If the
+  group is "football clubs, first letter changed", FULHAM cannot appear.
+- Before committing to a letter-surgery group, spell out each base and each
+  tile letter by letter and compare them. If any pair fails the stated rule,
+  change the base, the tile, or the whole mechanism.
+- Prefer transformed tiles that are real words or plausible names. Gibberish
+  is only acceptable when the derivation is exact and the base unmistakable.
+- If you cannot build four flawless tiles, use a different level 4 tool.
+  A blank or homophone group done perfectly beats letter surgery done badly.
 - ROTATE the level 4 mechanism: the "categories already used" list below is
   ordered oldest to newest, so its final entries are the most recent days.
   Never use the same level 4 tool two days running, and don't let any one
@@ -105,8 +121,63 @@ Return ONLY a JSON object, no markdown fences, of this exact shape:
     { "name": "...", "difficulty": 2, "words": ["...", "...", "...", "..."] },
     { "name": "...", "difficulty": 3, "words": ["...", "...", "...", "..."] }
   ],
+  "workings": ["one line per level-4 tile showing its derivation, e.g. \\"DALE = D + ALE (ale)\\" or \\"YORKSHIRE → Yorkshire pudding\\""],
   "trap": "one or two sentences describing the red herrings you set"
-}`;
+}
+"workings" must contain exactly 4 entries, one per level-4 tile. It is your
+proof of work and is checked; it is never shown to players.`;
+
+// ─── Second pass: adversarial verification ──────────────────────────────────
+// The generator is imaginative; this pass is ruthless. Every day must survive
+// a fact-check by a fresh call that is told to look for exactly the failure
+// modes we have seen in the wild (untransformed originals, off-by-one letter
+// surgery, invented base items, self-contradictory workings).
+
+const VERIFY_PROMPT = `You are the fact-checker for Groupie, a British
+word-grouping puzzle. You are given one day's puzzle plus the setter's
+"workings" for the wordplay group. Your job is to REJECT anything unsound.
+
+CHECK, in order:
+1. Wordplay exactness. For any group whose name states a letter operation
+   ("first letter changed/removed/added", "anagrams of", etc.), take each
+   tile and its claimed base and write BOTH out letter by letter. "First
+   letter changed" requires identical length and identical letters except
+   position one. "Removed" requires exactly that letter gone. "Added"
+   requires exactly one letter inserted. An untransformed member of the
+   base set appearing as a tile is an automatic fail. A base that is not a
+   real, well-known member of the stated set (a real football club, a real
+   river) is a fail.
+2. Membership truth. Every word in every group must genuinely belong to the
+   group as named, in a UK frame. One wrong member is a fail.
+3. Coherence. If the workings contradict the tiles, or hedge ("no, wait"),
+   fail.
+Do NOT fail a puzzle for being easy, hard, or stylistically dull — soundness
+only.
+
+Respond ONLY with JSON, no fences:
+{"verdict":"pass"} or {"verdict":"fail","problems":["specific problem", "..."]}
+When in doubt, fail — a skipped day is recoverable, a nonsense day is not.`;
+
+async function verifyGrid(env, parsed) {
+  const puzzle = JSON.stringify({ groups: parsed.groups, workings: parsed.workings });
+  let raw;
+  try {
+    raw = await callAnthropic(env, VERIFY_PROMPT, `Verify this puzzle:\n${puzzle}`, 0);
+  } catch (err) {
+    // If the checker itself is unreachable, fail closed: better to write
+    // nothing than to write unverified wordplay.
+    return { ok: false, reason: `verifier unavailable: ${err.message}` };
+  }
+  let verdict;
+  try {
+    verdict = JSON.parse(stripFences(raw));
+  } catch {
+    return { ok: false, reason: "verifier returned invalid JSON" };
+  }
+  if (verdict.verdict === "pass") return { ok: true };
+  const problems = Array.isArray(verdict.problems) ? verdict.problems.join("; ") : "unspecified";
+  return { ok: false, reason: `verifier: ${problems}` };
+}
 
 // ─── Generation ─────────────────────────────────────────────────────────────
 
@@ -115,7 +186,7 @@ Return ONLY a JSON object, no markdown fences, of this exact shape:
  * Returns { ok: true, payload, categories } or { ok: false, reason }.
  * Does not write to the database — the caller owns storage.
  */
-export async function generateDay(env, date, usedCategories) {
+export async function generateDay(env, date, usedCategories, recentGroups = []) {
   const recentUsed = [...usedCategories].slice(-400); // keep the prompt bounded
   const userPrompt =
     `Set the Groupie grid for ${date}.\n\n` +
@@ -137,8 +208,13 @@ export async function generateDay(env, date, usedCategories) {
     return { ok: false, reason: "Model did not return valid JSON" };
   }
 
-  const problem = validateDay(parsed, usedCategories);
+  const problem = validateDay(parsed, usedCategories, recentGroups);
   if (problem) return { ok: false, reason: problem };
+
+  // Adversarial second pass: a fresh call fact-checks membership and
+  // letter-surgery exactness. Days that don't survive are rejected.
+  const verified = await verifyGrid(env, parsed);
+  if (!verified.ok) return { ok: false, reason: verified.reason };
 
   // Normalise: order groups by difficulty, tidy whitespace, uppercase tiles.
   const groups = [...parsed.groups]
@@ -158,9 +234,17 @@ export async function generateDay(env, date, usedCategories) {
 
 // ─── Validation — everything the model returns is checked before storage ────
 
-export function validateDay(parsed, usedCategories) {
+export function validateDay(parsed, usedCategories, recentGroups = []) {
   if (!parsed || !Array.isArray(parsed.groups)) return "No groups array";
   if (parsed.groups.length !== 4) return "Need exactly 4 groups";
+
+  // Proof of work for the wordplay group.
+  if (!Array.isArray(parsed.workings) || parsed.workings.length !== 4)
+    return "Missing workings — the level 4 group must show its derivations";
+  if (parsed.workings.some((w) => typeof w !== "string" || w.trim().length < 5))
+    return "Workings too thin";
+  if (parsed.workings.some((w) => /no,? wait|reconsider|actually,|hmm/i.test(w)))
+    return "Workings contain hedging — the setter is unsure of its own group";
 
   const difficultiesSeen = new Set();
   const namesSeen = new Set();
@@ -196,13 +280,27 @@ export function validateDay(parsed, usedCategories) {
 
   if (typeof parsed.trap !== "string" || parsed.trap.trim().length < 20)
     return "No trap described — a grid without red herrings is a sort, not a puzzle";
+  if (/no,? wait|let me reconsider|actually,? (no|wrong)/i.test(parsed.trap))
+    return "Trap contains hedging — the setter is unsure of its own grid";
+
+  // No re-serving old material under a reworded name: if any new group
+  // shares 3+ words with a previously published group, it's a repeat.
+  for (const g of parsed.groups) {
+    const words = new Set(g.words.map((w) => String(w).trim().toUpperCase()));
+    for (const old of recentGroups) {
+      let overlap = 0;
+      for (const w of old) if (words.has(w)) overlap++;
+      if (overlap >= 3)
+        return `Group "${g.name}" repeats ${overlap} words from a previously published group`;
+    }
+  }
 
   return null; // all good
 }
 
 // ─── Anthropic ──────────────────────────────────────────────────────────────
 
-async function callAnthropic(env, system, user) {
+async function callAnthropic(env, system, user, temperature = 1) {
   if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not set");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -214,7 +312,7 @@ async function callAnthropic(env, system, user) {
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
       max_tokens: 2500,
-      temperature: 1,
+      temperature,
       system,
       messages: [{ role: "user", content: user }],
     }),

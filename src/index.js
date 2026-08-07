@@ -291,6 +291,7 @@ async function fillRange(env, start, days) {
   const rejected = [];
 
   const usedCategories = await loadUsedCategories(env);
+  const recentGroups = await loadRecentGroups(env);
 
   for (let i = 0; i < days; i++) {
     const date = addDays(start, i);
@@ -299,7 +300,7 @@ async function fillRange(env, start, days) {
       .first();
     if (exists) continue;
 
-    const result = await generateDay(env, date, usedCategories);
+    const result = await generateDay(env, date, usedCategories, recentGroups);
     if (!result.ok) {
       rejected.push({ date, reason: result.reason });
       continue;
@@ -316,10 +317,28 @@ async function fillRange(env, start, days) {
       ),
     ]);
     for (const c of result.categories) usedCategories.add(c);
+    for (const g of result.payload.groups) recentGroups.push(new Set(g.words));
     written.push(date);
   }
 
   return { written, rejected };
+}
+
+// Word-sets of every published group, so a new day can't re-serve an old
+// group under a reworded name (3+ shared words = a repeat).
+async function loadRecentGroups(env) {
+  const { results } = await env.DB.prepare(
+    "SELECT payload FROM days ORDER BY date DESC LIMIT 120"
+  ).all();
+  const sets = [];
+  for (const row of results || []) {
+    try {
+      for (const g of JSON.parse(row.payload).groups || []) {
+        sets.push(new Set((g.words || []).map((w) => String(w).trim().toUpperCase())));
+      }
+    } catch { /* ignore malformed rows */ }
+  }
+  return sets;
 }
 
 // Cron entry: make sure there are `target` days queued from today,
