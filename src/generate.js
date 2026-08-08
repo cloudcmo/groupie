@@ -71,9 +71,12 @@ LETTER-SURGERY RULES (non-negotiable — one sloppy tile ruins the day)
 - Surgery may ONLY touch the FIRST or the LAST letter of a word. Mid-word
   operations ("middle letter removed", "second letter changed") are BANNED
   outright — counting positions inside a word is where these groups die.
-- Letter surgery is the highest-failure tool in the kit. Reach for blanks,
-  homophones and hidden words more often; attempt surgery only when four
-  flawless first-or-last-letter tiles come to you easily.
+- Letter surgery is the highest-failure tool in the kit, and under the
+  real-word rule it is genuinely hard: four transformations that are each
+  letter-exact AND real words. Treat it as a rare treat — at most one
+  surgery day a week. Your DEFAULT tools are blanks, hidden words,
+  homophones, spelling patterns and truncations; attempt surgery only when
+  four flawless real-word tiles are already in your head before you start.
 - The stated operation must hold EXACTLY, letter by letter, for every tile.
   "First letter changed" means: same length, every letter identical except
   position one. "First letter removed" means: the base minus exactly its
@@ -157,8 +160,9 @@ grid; "base" is the word it derives from (for blanks, the completed phrase;
 for homophones, the word it sounds like; for hidden words, the word hidden;
 for truncations, the full word). Exactly 4 pairs, one per level-4 tile. If
 any pair fails the exact letter check, the whole day is rejected — so spell
-each pair out and verify it yourself before answering. Never shown to
-players.`;
+each pair out and verify it yourself BEFORE you begin the JSON. The JSON
+object must be the last thing in your reply: write nothing after its
+closing brace. Never shown to players.`;
 
 // ─── Machine check: the letter arithmetic ───────────────────────────────────
 // Letter operations are string arithmetic, and string arithmetic belongs to
@@ -305,7 +309,7 @@ async function verifyGrid(env, parsed) {
   }
   // The verdict is the LAST JSON object in the reply — everything before
   // it is the checker's letter-by-letter working.
-  const verdict = extractJson(raw);
+  const verdict = extractJson(raw, "verdict");
   if (!verdict || typeof verdict.verdict !== "string")
     return { ok: false, reason: "verifier returned invalid JSON" };
   if (verdict.verdict === "pass") return { ok: true };
@@ -347,12 +351,14 @@ export async function generateDay(env, date, usedCategories, recentGroups = []) 
 
   let raw;
   try {
-    raw = await callAnthropic(env, SYSTEM_PROMPT, userPrompt);
+    // 3500 tokens: room for the setter to think aloud before the JSON
+    // without the object being truncated mid-grid.
+    raw = await callAnthropic(env, SYSTEM_PROMPT, userPrompt, 1, 3500);
   } catch (err) {
     return { ok: false, reason: `API error: ${err.message}` };
   }
 
-  const parsed = extractJson(raw);
+  const parsed = extractJson(raw, "groups");
   if (!parsed) return { ok: false, reason: "Model did not return valid JSON" };
 
   const problem = validateDay(parsed, usedCategories, recentGroups);
@@ -490,14 +496,17 @@ function stripFences(text) {
 }
 
 // Pull a JSON object out of a completion that may wrap it in prose or
-// fences. Models asked for "JSON only" still narrate sometimes — and the
-// verifier is explicitly invited to show its working before the verdict —
-// so scan for balanced top-level {...} spans and return the LAST one that
-// parses (the final answer, not a worked example along the way).
-function extractJson(text) {
+// fences. Models asked for "JSON only" still narrate sometimes — before
+// AND after the object — so scan for balanced top-level {...} spans and
+// return the last one that parses AND carries the expected key. Without
+// the key filter, a setter that mutters '{"tile":"DALE","base":"ALE"}'
+// while double-checking its own work after the grid would win the scan,
+// and the whole day would be thrown away for "No groups array".
+function extractJson(text, wantKey = null) {
   const cleaned = stripFences(text);
   try {
-    return JSON.parse(cleaned);
+    const whole = JSON.parse(cleaned);
+    if (!wantKey || (whole && typeof whole === "object" && wantKey in whole)) return whole;
   } catch {
     /* fall through to the scan */
   }
@@ -519,7 +528,9 @@ function extractJson(text) {
       depth--;
       if (depth === 0 && start >= 0) {
         try {
-          found = JSON.parse(cleaned.slice(start, i + 1));
+          const candidate = JSON.parse(cleaned.slice(start, i + 1));
+          if (!wantKey || (candidate && typeof candidate === "object" && wantKey in candidate))
+            found = candidate;
         } catch {
           /* not valid JSON — keep scanning */
         }
