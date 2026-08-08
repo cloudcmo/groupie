@@ -324,8 +324,22 @@ async function verifyGrid(env, parsed) {
  * Returns { ok: true, payload, categories } or { ok: false, reason }.
  * Does not write to the database — the caller owns storage.
  */
+// Tools the setter may be assigned on automated days. Letter surgery and
+// anagrams are NOT here by editorial decree: under the real-word rule the
+// model cannot hit them reliably (dozens of live failures, zero passes),
+// so they are reserved for hand-set days. The tool rotates by date, so
+// retries for the same day always ask for the same tool and consecutive
+// days always differ.
+const AUTO_TOOLS = ["blank", "hidden-start", "homophone", "truncation", "spelling", "hidden-end"];
+
+function toolForDate(date) {
+  const dayNumber = Math.round(Date.parse(date + "T00:00:00Z") / 86400000);
+  return AUTO_TOOLS[((dayNumber % AUTO_TOOLS.length) + AUTO_TOOLS.length) % AUTO_TOOLS.length];
+}
+
 export async function generateDay(env, date, usedCategories, recentGroups = []) {
   const recentUsed = [...usedCategories].slice(-400); // keep the prompt bounded
+  const forcedTool = toolForDate(date);
 
   // Show the setter the WORDS of recent grids, not just the category names.
   // Without this it cannot know a crowd-pleaser idea ("things that can be
@@ -347,6 +361,10 @@ export async function generateDay(env, date, usedCategories, recentGroups = []) 
     `these sets under any name — a new group may share at most TWO words with ` +
     `any one set below. Fresh material beats familiar material: ` +
     (takenSets || "none yet") +
+    `\n\nTODAY'S LEVEL 4 TOOL, fixed by the editor: "${forcedTool}". Build the ` +
+    `wordplay group with exactly that tool and declare it in wordplay.tool. ` +
+    `Letter surgery (change/add/remove-letter) and anagrams are reserved for ` +
+    `hand-set days — never choose them yourself.` +
     `\n\nReturn the JSON object only.`;
 
   let raw;
@@ -360,6 +378,14 @@ export async function generateDay(env, date, usedCategories, recentGroups = []) 
 
   const parsed = extractJson(raw, "groups");
   if (!parsed) return { ok: false, reason: "Model did not return valid JSON" };
+
+  // The editor assigned today's tool; a setter that ignored the assignment
+  // is rejected before any further checks (or paid verification) run.
+  if (!parsed.wordplay || parsed.wordplay.tool !== forcedTool)
+    return {
+      ok: false,
+      reason: `setter ignored the assigned level 4 tool (asked for "${forcedTool}", got "${parsed.wordplay?.tool || "none"}")`,
+    };
 
   const problem = validateDay(parsed, usedCategories, recentGroups);
   if (problem) return { ok: false, reason: problem };
