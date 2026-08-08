@@ -16,7 +16,7 @@ for i in $(seq 1 "$ROUNDS"); do
   curl -s --max-time 180 -X POST "$URL/api/generate" \
     -H "Authorization: Bearer $(cat .admin-token)" \
     -H "Content-Type: application/json" \
-    -d '{"days": 45}' || printf 'request failed (safe to ignore, next round retries)'
+    -d '{"days": 14}' || printf 'request failed (safe to ignore, next round retries)'
   echo ""
 done
 echo ""

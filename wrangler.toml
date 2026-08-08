@@ -17,7 +17,10 @@ database_id = "6cd5c1cc-beef-49a1-a163-c57e5ede2774"
 # Puzzle #1 is this date. Set to your launch date before first deploy.
 EPOCH_DATE = "2026-08-01"
 # The daily cron tops the queue back up to this many days ahead.
-TOPUP_TARGET_DAYS = "45"
+# 14, not 45: a fortnight is ample safety runway, and twice in one week
+# a rule change condemned the whole banked queue — a smaller buffer caps
+# both the standing spend and the cost of throwing banked days away.
+TOPUP_TARGET_DAYS = "14"
 # The Friday games newsletter segment in Resend (shared with Whenly / Pub Quiz Daily / What Word).
 RESEND_SEGMENT_ID = "90610922-0511-40a1-a3d1-2c645d992210"
 
