@@ -58,7 +58,8 @@ THE FOUR GROUPS
         start" (DALE→ale, DRUM→rum, SWINE→wine, SPORT→port)
       · REMOVE the FIRST or LAST letter: "chocolate bars missing their
         last letter" (WISP→Wispa, FLAK→Flake, BOOS→Boost)
-      · themed anagrams: "anagrams of British rivers" (MASHET→Thames)
+      · themed anagrams: "anagrams of British rivers" — each tile must
+        itself be a real word (NERVES→Severn), never a scramble
       · spelling patterns: "Y is the only vowel" (MYRRH, RHYTHM),
         "silent W" (SWORD, WREATH), and kin
       · truncations: "starts of London boroughs" (HACK, CAM, BARK)
@@ -88,10 +89,16 @@ LETTER-SURGERY RULES (non-negotiable — one sloppy tile ruins the day)
 - Before committing to a letter-surgery group, spell out each base and each
   tile letter by letter and compare them. If any pair fails the stated rule,
   change the base, the tile, or the whole mechanism.
-- Prefer transformed tiles that are real words or plausible names. Gibberish
-  is only acceptable when the derivation is exact and the base unmistakable.
-- If you cannot build four flawless tiles, use a different level 4 tool.
-  A blank or homophone group done perfectly beats letter surgery done badly.
+- Every transformed tile must be a REAL WORD, real name, or real phrase in
+  its own right — something a dictionary or a well-read person would
+  recognise. Gibberish tiles are BANNED outright: MAJOP and CAMEROS are not
+  words, and four non-words cluster visually and solve the group by their
+  ugliness alone. BLAIN for Blair works because blain is a real word;
+  that standard applies to all four tiles, no exceptions.
+- If you cannot build four flawless REAL-WORD tiles, use a different level
+  4 tool. A blank or homophone group done perfectly beats letter surgery
+  done badly — and letter surgery that needs gibberish was never good
+  enough to set.
 - ROTATE the level 4 mechanism: the "categories already used" list below is
   ordered oldest to newest, so its final entries are the most recent days.
   Never use the same level 4 tool two days running, and don't let any one
@@ -260,14 +267,19 @@ CHECK, in order:
 1. Real bases. Every "base" must be a real, well-known member of the set
    the group name claims — a real football club, a real river, a real
    cheese. An invented, obscure or wrong-set base is a fail.
-2. No untransformed members. If any TILE is itself a genuine member of
+2. Real tiles. Every TILE in the wordplay group must be a real English
+   word, real name, or real phrase in its own right — recognisable to a
+   dictionary or a well-read UK adult. Gibberish (MAJOP, CAMEROS,
+   ATTLEN) is an automatic fail even when the letter derivation is
+   exact: non-words cluster visually and give the group away.
+3. No untransformed members. If any TILE is itself a genuine member of
    the base set (WELLS appearing in "cities, first letter changed" —
    Wells is a real city), automatic fail.
-3. Name honesty. The group name must state the declared tool and position
+4. Name honesty. The group name must state the declared tool and position
    plainly enough that the reveal is fair, and must match the declared
    mechanism — "first letter changed" must not be sold as anagrams.
    Mid-word operations are banned by house rules; fail them.
-4. Membership truth. Every word in every group must genuinely belong to
+5. Membership truth. Every word in every group must genuinely belong to
    the group as named, in a UK frame. One wrong member is a fail.
 Do NOT fail a puzzle for being easy, hard, or stylistically dull — soundness
 only.
