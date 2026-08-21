@@ -506,7 +506,7 @@
     // "More daily guff" — the cross-sell bar shared by all four games
     const resultsEl = slot.querySelector(".results");
     if (window.GuffBar && resultsEl) {
-      if (mode === "daily") GuffBar.completedToday(resultsEl);
+      if (mode === "daily") GuffBar.completedToday(resultsEl, { score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX });
       else if (mode === "archive") GuffBar.show(resultsEl);
     }
 

@@ -17,6 +17,7 @@ export default {
       if (path === "/api/played") return await servePlayed(request, env);
       if (path === "/api/stats") return await serveStats(url, env, request);
       if (path === "/api/docket") return await serveDocket(url, request, env);
+      if (path.startsWith("/api/league")) return await serveLeague(url, request, env, path);
       if (path === "/api/generate") return await serveGenerate(request, env);
       if (path === "/api/subscribe") return await handleSubscribe(request, env);
       // SEO files are generated here (not static) so they always reflect the
@@ -289,6 +290,115 @@ async function serveSitemap(url, env) {
   return new Response(xml, {
     headers: { "Content-Type": "application/xml", "Cache-Control": "public, max-age=3600" },
   });
+}
+
+
+// ─── The Guff games league ──────────────────────────────────────────────────
+// Three initials, entered once, attached to the same anonymous cross-site id
+// the docket uses. Every game reports its daily score here; the league page
+// on the guff hub reads the tables. Cross-origin by design, same as the
+// docket. No accounts — three letters and glory.
+
+const INITIALS_BLOCKLIST = new Set([
+  "ASS", "FUK", "FUC", "FCK", "SHT", "CNT", "DIK", "COK", "FAG", "NIG",
+]);
+
+async function serveLeague(url, request, env, path) {
+  if (request.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: DOCKET_CORS });
+
+  const today = todayISO();
+
+  // GET /api/league/player?id= → { initials } (or {})
+  if (path === "/api/league/player" && request.method === "GET") {
+    const id = url.searchParams.get("id") || "";
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    const row = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+    return docketJson(row ? { initials: row.initials } : {});
+  }
+
+  // POST /api/league/initials { id, initials }
+  if (path === "/api/league/initials" && request.method === "POST") {
+    let body = {};
+    try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+    const id = String(body.id || "");
+    const initials = String(body.initials || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    if (initials.length !== 3)
+      return docketJson({ error: "Three letters. It is the arcade way." }, 400);
+    if (INITIALS_BLOCKLIST.has(initials))
+      return docketJson({ error: "The arcade cabinet refuses those letters." }, 400);
+    await env.DB.prepare(
+      `INSERT INTO players (id, initials, created) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET initials = excluded.initials`
+    ).bind(id, initials).run();
+    return docketJson({ ok: true, initials });
+  }
+
+  // POST /api/league/score { id, date, game, score, max, display }
+  // Scores are stored even before initials exist — the join hides them
+  // until the player signs the cabinet.
+  if (path === "/api/league/score" && request.method === "POST") {
+    let body = {};
+    try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+    const id = String(body.id || "");
+    const date = String(body.date || today);
+    const game = String(body.game || "");
+    const score = Math.max(0, Math.min(9999, parseInt(body.score, 10) || 0));
+    const max = Math.max(0, Math.min(9999, parseInt(body.max, 10) || 0));
+    const display = String(body.display || "").slice(0, 24);
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
+    // Today or yesterday only, and never twice: first score of the day stands.
+    if (date !== today && date !== addDays(today, -1))
+      return docketJson({ error: "Bad date" }, 400);
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO league_scores (id, date, game, score, max, display)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(id, date, game, score, max, display).run();
+    const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+    return docketJson({ ok: true, initials: p ? p.initials : null });
+  }
+
+  // GET /api/league?date=&mode=today|all → the tables
+  if (path === "/api/league" && request.method === "GET") {
+    const mode = url.searchParams.get("mode") === "all" ? "all" : "today";
+    const date = url.searchParams.get("date") || today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
+
+    let rows;
+    if (mode === "today") {
+      ({ results: rows } = await env.DB.prepare(
+        `SELECT s.game, s.score, s.max, s.display, p.initials
+         FROM league_scores s JOIN players p ON p.id = s.id
+         WHERE s.date = ? ORDER BY s.score DESC, s.rowid ASC`
+      ).bind(date).all());
+    } else {
+      // All-time: each player's best per game, newest date wins ties.
+      ({ results: rows } = await env.DB.prepare(
+        `SELECT s.game, MAX(s.score) AS score, s.max, s.display, p.initials, s.date
+         FROM league_scores s JOIN players p ON p.id = s.id
+         GROUP BY s.id, s.game ORDER BY score DESC`
+      ).all());
+    }
+
+    const games = {};
+    for (const r of rows || []) {
+      if (!games[r.game]) games[r.game] = [];
+      if (games[r.game].length < 10)
+        games[r.game].push({
+          initials: r.initials,
+          score: r.score,
+          max: r.max,
+          display: r.display,
+          ...(mode === "all" ? { date: r.date } : {}),
+        });
+    }
+    return docketJson({ mode, date: mode === "today" ? date : null, games }, 200);
+  }
+
+  return docketJson({ error: "Not found" }, 404);
 }
 
 // ─── Generation plumbing ────────────────────────────────────────────────────

@@ -37,3 +37,25 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 
 CREATE INDEX IF NOT EXISTS idx_categories_date ON categories(date);
+
+-- The Guff games league. Three initials, entered once, attached to the
+-- same anonymous cross-site id the docket uses. Scores are stored even
+-- before initials exist; the league join hides them until the player
+-- signs the cabinet. (Both tables already created in the live D1.)
+CREATE TABLE IF NOT EXISTS players (
+  id TEXT PRIMARY KEY,            -- guff-bar anonymous id
+  initials TEXT NOT NULL,         -- AAA
+  created TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS league_scores (
+  id TEXT NOT NULL,
+  date TEXT NOT NULL,             -- YYYY-MM-DD (UK day)
+  game TEXT NOT NULL,             -- pqd | whenly | whatword | groupie | twentee
+  score INTEGER NOT NULL,         -- higher is better, game-native scale
+  max INTEGER NOT NULL DEFAULT 0,
+  display TEXT NOT NULL DEFAULT '',  -- "9/10", "in 7" — as the game says it
+  PRIMARY KEY (id, date, game)
+);
+
+CREATE INDEX IF NOT EXISTS idx_league_date ON league_scores(date, game, score);
