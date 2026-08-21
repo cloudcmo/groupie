@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS plays (
   score_sum INTEGER NOT NULL DEFAULT 0    -- solve-order scores (0–24 each), for the daily average
 );
 
--- The cross-game docket: which of the four games an anonymous browser id
--- has played on a given day. Powers the "More daily guff" bar on all four
+-- The cross-game docket: which of the games an anonymous browser id
+-- has played on a given day. Powers the "More daily guff" bar on all the
 -- sites. Rows older than a fortnight are pruned by the daily cron.
 CREATE TABLE IF NOT EXISTS docket (
   id TEXT NOT NULL,               -- anonymous random id from the player's browser
@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS docket (
   whenly INTEGER NOT NULL DEFAULT 0,
   whatword INTEGER NOT NULL DEFAULT 0,
   groupie INTEGER NOT NULL DEFAULT 0,
+  twentee INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (id, date)
 );
 
