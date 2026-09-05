@@ -51,7 +51,9 @@ THE FOUR GROUPS
       · hidden word at the START: "starting with a fish" (CODDLE, EELY...)
       · hidden word at the END: "ending in a river" (OVERSEVERN-style —
         craft real words/phrases whose tails hide the theme)
-      · homophones: "homophones of famous Daves"
+      · homophones: "homophones of famous Daves" — each pair must sound
+        IDENTICAL in ordinary British speech (BEACH/beech, not SEDGE/sage),
+        and each tile must be a real word that differs from its base
       · CHANGE the FIRST or LAST letter: "the full English, first letter
         changed" (JEANS→beans, KEGS→eggs, BOAST→toast, CASH→hash)
       · ADD a letter at the START or END: "booze, one letter added at the
@@ -241,6 +243,11 @@ function checkPair(tool, pos, tile, base) {
       if (letters(tile) !== letters(base)) return fail("tile is not an anagram of its base");
       return null;
     }
+    case "homophone":
+      // Sound-alikes need a human-grade ear (the verifier judges them),
+      // but one failure mode is free to catch: the "homophone" that is
+      // simply the same word again.
+      return tile !== base ? null : fail("tile is identical to its base — that is not a homophone");
     case "hidden-start":
       return tile.startsWith(base) ? null : fail("tile does not start with its base word");
     case "hidden-end":
@@ -282,7 +289,12 @@ CHECK, in order:
 4. Name honesty. The group name must state the declared tool and position
    plainly enough that the reveal is fair, and must match the declared
    mechanism — "first letter changed" must not be sold as anagrams.
-   Mid-word operations are banned by house rules; fail them.
+   Mid-word operations are banned by house rules; fail them. House
+   terminology: "hidden-start"/"hidden-end" means the base word appears at
+   the start/end of a longer tile (CODDLE starts with COD) — the base
+   being plainly visible there is the genre working, not a fault.
+   Homophones must sound IDENTICAL in ordinary British speech — near
+   rhymes and added syllables are fails.
 5. Membership truth. Every word in every group must genuinely belong to
    the group as named, in a UK frame. One wrong member is a fail.
 Do NOT fail a puzzle for being easy, hard, or stylistically dull — soundness
@@ -327,19 +339,20 @@ async function verifyGrid(env, parsed) {
 // Tools the setter may be assigned on automated days. Letter surgery and
 // anagrams are NOT here by editorial decree: under the real-word rule the
 // model cannot hit them reliably (dozens of live failures, zero passes),
-// so they are reserved for hand-set days. The tool rotates by date, so
-// retries for the same day always ask for the same tool and consecutive
-// days always differ.
+// so they are reserved for hand-set days. The tool is drawn at RANDOM per
+// attempt — a date-locked rotation looked tidy but jammed in practice:
+// when 2026-09-06 drew "homophone" (another genre the model fumbles),
+// eleven consecutive retries demanded the same tool it couldn't deliver.
+// Random draws mean a failed genre wastes one attempt, not a whole run.
 const AUTO_TOOLS = ["blank", "hidden-start", "homophone", "truncation", "spelling", "hidden-end"];
 
-function toolForDate(date) {
-  const dayNumber = Math.round(Date.parse(date + "T00:00:00Z") / 86400000);
-  return AUTO_TOOLS[((dayNumber % AUTO_TOOLS.length) + AUTO_TOOLS.length) % AUTO_TOOLS.length];
+function drawTool() {
+  return AUTO_TOOLS[Math.floor(Math.random() * AUTO_TOOLS.length)];
 }
 
 export async function generateDay(env, date, usedCategories, recentGroups = []) {
   const recentUsed = [...usedCategories].slice(-400); // keep the prompt bounded
-  const forcedTool = toolForDate(date);
+  const forcedTool = drawTool();
 
   // Show the setter the WORDS of recent grids, not just the category names.
   // Without this it cannot know a crowd-pleaser idea ("things that can be
