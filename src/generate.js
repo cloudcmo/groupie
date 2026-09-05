@@ -350,7 +350,7 @@ function drawTool() {
   return AUTO_TOOLS[Math.floor(Math.random() * AUTO_TOOLS.length)];
 }
 
-export async function generateDay(env, date, usedCategories, recentGroups = []) {
+export async function generateDay(env, date, usedCategories, recentGroups = [], priorRejection = null) {
   const recentUsed = [...usedCategories].slice(-400); // keep the prompt bounded
   const forcedTool = drawTool();
 
@@ -378,13 +378,23 @@ export async function generateDay(env, date, usedCategories, recentGroups = []) 
     `wordplay group with exactly that tool and declare it in wordplay.tool. ` +
     `Letter surgery (change/add/remove-letter) and anagrams are reserved for ` +
     `hand-set days — never choose them yourself.` +
+    // Learn from the last failure instead of repeating it: with 140+ used
+    // categories the archive is a minefield, and a blind retry walks the
+    // same path (scone spreads, two minutes after toast spreads was binned).
+    (priorRejection
+      ? `\n\nYOUR PREVIOUS ATTEMPT FOR THIS DATE WAS REJECTED: "${priorRejection}". ` +
+        `Do not repeat that mistake — take a different angle entirely: different ` +
+        `themes, different words, and if the rejection names a group or category, ` +
+        `nothing resembling it.`
+      : "") +
     `\n\nReturn the JSON object only.`;
 
   let raw;
   try {
-    // 3500 tokens: room for the setter to think aloud before the JSON
-    // without the object being truncated mid-grid.
-    raw = await callAnthropic(env, SYSTEM_PROMPT, userPrompt, 1, 3500);
+    // 4000 tokens: room for the setter to think aloud before the JSON
+    // without the object being truncated mid-grid ("Model did not return
+    // valid JSON" blips were running at ~2 in 10).
+    raw = await callAnthropic(env, SYSTEM_PROMPT, userPrompt, 1, 4000);
   } catch (err) {
     return { ok: false, reason: `API error: ${err.message}` };
   }

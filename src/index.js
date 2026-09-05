@@ -524,6 +524,9 @@ async function fillRange(env, start, days, maxAttempts = 1) {
 
   const usedCategories = await loadUsedCategories(env);
   const recentGroups = await loadRecentGroups(env);
+  // Within a run, a retried date carries its last rejection back into the
+  // prompt so the setter changes course instead of repeating the mistake.
+  const lastRejection = new Map();
 
   for (let i = 0; i < days; i++) {
     if (attempts >= maxAttempts) break;
@@ -533,12 +536,21 @@ async function fillRange(env, start, days, maxAttempts = 1) {
       .first();
     if (exists) continue;
 
-    attempts++;
-    const result = await generateDay(env, date, usedCategories, recentGroups);
-    if (!result.ok) {
+    // Up to two goes per date per run: the second attempt is told exactly
+    // why the first was rejected, so it changes course instead of walking
+    // back into the same collision. A stubborn date then yields to the next
+    // rather than eating the whole run.
+    let result = null;
+    while (attempts < maxAttempts) {
+      attempts++;
+      result = await generateDay(env, date, usedCategories, recentGroups, lastRejection.get(date) || null);
+      if (result.ok) break;
       rejected.push({ date, reason: result.reason });
-      continue;
+      const firstFailureThisRun = !lastRejection.has(date);
+      lastRejection.set(date, result.reason);
+      if (!firstFailureThisRun) break; // second strike — move to the next date
     }
+    if (!result || !result.ok) continue;
 
     // One batched write per day — day row plus its categories in a single trip.
     await env.DB.batch([
