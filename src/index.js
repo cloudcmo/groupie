@@ -17,6 +17,8 @@ export default {
       if (path === "/api/played") return await servePlayed(request, env);
       if (path === "/api/stats") return await serveStats(url, env, request);
       if (path === "/api/docket") return await serveDocket(url, request, env);
+      if (path === "/api/visit") return await serveVisit(request, env);
+      if (path === "/api/sources") return await serveSources(url, request, env);
       if (path.startsWith("/api/league")) return await serveLeague(url, request, env, path);
       if (path === "/api/generate") return await serveGenerate(request, env);
       if (path === "/api/subscribe") return await handleSubscribe(request, env);
@@ -104,7 +106,7 @@ async function serveHealth(env) {
 // merged state back. Cross-origin by design, so full CORS. No identifiers
 // beyond the random id, no auth — the data is a handful of booleans a day.
 
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee"]);
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes"]);
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -125,7 +127,7 @@ async function serveDocket(url, request, env) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -149,12 +151,102 @@ async function serveDocket(url, request, env) {
     ).bind(id, date).run();
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
 
   return docketJson({ error: "Method not allowed" }, 405);
+}
+
+// ─── Visits: who arrived, and from where ───────────────────────────────────
+// guff-bar.js pings this once per page load with the bar's anonymous id and
+// any ?ref= the page was opened with (the Friday email tags its links
+// ref=friday). One row per (id, date, game); the ref sticks the first time it
+// is seen. Joined with the docket, this answers "did the email bring anyone,
+// and did they finish?" — the daily report reads it via /api/sources.
+const VISIT_REF = /^[a-z0-9_-]{1,24}$/;
+
+async function serveVisit(request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+  if (request.method !== "POST") return docketJson({ error: "POST only" }, 405);
+  let body = {};
+  try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+
+  const today = todayISO();
+  const id = typeof body.id === "string" ? body.id : "";
+  const date = typeof body.date === "string" ? body.date : today;
+  const game = typeof body.game === "string" ? body.game : "";
+  const rawRef = typeof body.ref === "string" ? body.ref.toLowerCase().trim() : "";
+  const ref = VISIT_REF.test(rawRef) ? rawRef : null;
+  if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+  if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+  if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
+
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO visits (id, date, game, ref) VALUES (?, ?, ?, ?)"
+  ).bind(id, date, game, ref).run();
+  if (ref) {
+    await env.DB.prepare(
+      "UPDATE visits SET ref = ? WHERE id = ? AND date = ? AND game = ? AND ref IS NULL"
+    ).bind(ref, id, date, game).run();
+  }
+  return docketJson({ ok: true });
+}
+
+// Aggregates only — no ids leave the server — so it is public, like the
+// league table. Per game: unique visitors, how many finished, and both
+// broken down by ref. A visitor counts as "from friday" for every game if
+// ANY of their visits that day carried the ref (the bar unifies ids across
+// the sites), which is what "did the email bring them" means.
+async function serveSources(url, request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+  const date = url.searchParams.get("date") || todayISO();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
+
+  const games = [...DOCKET_GAMES];
+  const out = {};
+  for (const g of games) out[g] = { visits: 0, completed: 0, refs: {} };
+
+  const { results: visitRows } = await env.DB.prepare(
+    `SELECT v.game, r.ref, COUNT(DISTINCT v.id) AS n
+       FROM visits v
+       LEFT JOIN (SELECT DISTINCT id, ref FROM visits WHERE date = ? AND ref IS NOT NULL) r ON r.id = v.id
+      WHERE v.date = ?
+      GROUP BY v.game, r.ref`
+  ).bind(date, date).all();
+  for (const r of visitRows || []) {
+    if (!out[r.game]) continue;
+    out[r.game].visits += r.n;
+    if (r.ref) {
+      out[r.game].refs[r.ref] = out[r.game].refs[r.ref] || { visits: 0, completed: 0 };
+      out[r.game].refs[r.ref].visits += r.n;
+    }
+  }
+
+  const sums = games.map((g) => `SUM(d.${g}) AS ${g}`).join(", ");
+  const { results: doneRows } = await env.DB.prepare(
+    `SELECT r.ref, ${sums}
+       FROM docket d
+       LEFT JOIN (SELECT DISTINCT id, ref FROM visits WHERE date = ? AND ref IS NOT NULL) r ON r.id = d.id
+      WHERE d.date = ?
+      GROUP BY r.ref`
+  ).bind(date, date).all();
+  for (const r of doneRows || []) {
+    for (const g of games) {
+      const n = r[g] || 0;
+      out[g].completed += n;
+      if (r.ref) {
+        out[g].refs[r.ref] = out[g].refs[r.ref] || { visits: 0, completed: 0 };
+        out[g].refs[r.ref].completed += n;
+      }
+    }
+  }
+
+  return new Response(JSON.stringify({ date, games: out }), {
+    status: 200,
+    headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60", ...DOCKET_CORS },
+  });
 }
 
 function validDocketId(id) {
@@ -168,6 +260,8 @@ function docketPlayed(row) {
     whatword: !!row?.whatword,
     groupie: !!row?.groupie,
     twentee: !!row?.twentee,
+    spellbound: !!row?.spellbound,
+    guffinoes: !!row?.guffinoes,
   };
 }
 
@@ -370,7 +464,7 @@ async function serveLeague(url, request, env, path) {
     let rows;
     if (mode === "today") {
       ({ results: rows } = await env.DB.prepare(
-        `SELECT s.game, s.score, s.max, s.display, p.initials
+        `SELECT s.id, s.game, s.score, s.max, s.display, p.initials
          FROM league_scores s JOIN players p ON p.id = s.id
          WHERE s.date = ? ORDER BY s.score DESC, s.rowid ASC`
       ).bind(date).all());
@@ -384,8 +478,17 @@ async function serveLeague(url, request, env, path) {
     }
 
     const games = {};
+    const ranks = {}; // running position per game as we walk the ordered rows
+    const meId = url.searchParams.get("id") || "";
+    const askMe = mode === "today" && validDocketId(meId);
+    const meGames = {};
     for (const r of rows || []) {
       if (!games[r.game]) games[r.game] = [];
+      ranks[r.game] = (ranks[r.game] || 0) + 1;
+      if (askMe && r.id === meId)
+        meGames[r.game] = {
+          score: r.score, max: r.max, display: r.display, rank: ranks[r.game],
+        };
       if (games[r.game].length < 10)
         games[r.game].push({
           initials: r.initials,
@@ -395,7 +498,12 @@ async function serveLeague(url, request, env, path) {
           ...(mode === "all" ? { date: r.date } : {}),
         });
     }
-    return docketJson({ mode, date: mode === "today" ? date : null, games }, 200);
+    if (askMe) for (const g in meGames) meGames[g].total = ranks[g] || 0;
+    const payload = { mode, date: mode === "today" ? date : null, games };
+    // The asker's own day: score, display and rank per game — the share
+    // card's raw material. Only for today mode, only when an id is sent.
+    if (askMe) payload.me = { games: meGames };
+    return docketJson(payload, 200);
   }
 
   return docketJson({ error: "Not found" }, 404);
@@ -467,9 +575,22 @@ async function loadRecentGroups(env) {
   return sets;
 }
 
-// Cron entry: make sure there are `target` days queued from today,
-// then email an alert if the queue is still worryingly low.
+// Cron entry: make sure there are `target` days queued from today. The
+// posture is self-healing, not alarm-raising: a low queue makes the run
+// work HARDER (more attempts) rather than emailing Carl homework. He gets
+// a receipt when the run recovered a low queue by itself, and an alarm
+// only when the run tried hard and the queue is STILL short — which means
+// something no retry can fix (a dead API key, exhausted credit).
 const LOW_WATER = 7;
+
+async function queueDepth(env) {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS queued, MAX(date) AS through FROM days WHERE date >= ?"
+  )
+    .bind(todayISO())
+    .first();
+  return { queued: row?.queued || 0, through: row?.through || null };
+}
 
 async function runScheduled(env, target) {
   // Prune docket rows older than a fortnight — the bar only ever asks about
@@ -477,28 +598,56 @@ async function runScheduled(env, target) {
   await env.DB.prepare("DELETE FROM docket WHERE date < ?")
     .bind(addDays(todayISO(), -14)).run()
     .catch((err) => console.error("Docket prune failed:", err));
+  // Visits keep two months, so a Friday can be compared with the ones before.
+  await env.DB.prepare("DELETE FROM visits WHERE date < ?")
+    .bind(addDays(todayISO(), -60)).run()
+    .catch((err) => console.error("Visits prune failed:", err));
+
+  const before = await queueDepth(env);
 
   // The scheduled context has far roomier limits than an HTTP request, so
-  // the cron may attempt several days per morning.
-  const report = await fillRange(env, todayISO(), target, 6);
+  // the cron may attempt several days per run — and twice as many when the
+  // queue has actually run low.
+  const report = await fillRange(env, todayISO(), target, before.queued < LOW_WATER ? 12 : 6);
   console.log(
     `Top-up: wrote ${report.written.length}, rejected ${report.rejected.length}`,
     report.rejected
   );
 
-  const today = todayISO();
-  const row = await env.DB.prepare(
-    "SELECT COUNT(*) AS queued, MAX(date) AS through FROM days WHERE date >= ?"
-  )
-    .bind(today)
-    .first();
-  const queued = row?.queued || 0;
+  const after = await queueDepth(env);
 
-  if (queued < LOW_WATER) {
-    await sendLowQueueAlert(env, queued, row?.through, report.rejected).catch((err) =>
+  if (after.queued < LOW_WATER) {
+    // Tried hard, still short: a human is genuinely needed.
+    await sendLowQueueAlert(env, after.queued, after.through, report.rejected).catch((err) =>
       console.error("Low-queue alert failed:", err)
     );
+  } else if (before.queued < LOW_WATER && report.written.length) {
+    // The queue was low and this run fixed it unaided — send the receipt.
+    await sendTopupReceipt(env, report.written.length, after.queued, after.through).catch((err) =>
+      console.error("Top-up receipt failed:", err)
+    );
   }
+}
+
+async function sendTopupReceipt(env, wrote, queued, through) {
+  if (!env.RESEND_API_KEY || !env.ALERT_EMAIL) return;
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "Groupie <hello@pubquizdaily.com>",
+      to: [env.ALERT_EMAIL],
+      subject: `Groupie topped itself up: wrote ${wrote} day${wrote === 1 ? "" : "s"}, queue at ${queued}`,
+      html: `<p>The grid queue had run low, so the top-up worked harder and wrote
+        <strong>${wrote} day${wrote === 1 ? "" : "s"}</strong>. The queue now holds
+        <strong>${queued} day${queued === 1 ? "" : "s"}</strong> (through ${through || "—"}).</p>
+        <p>No action needed — this is a receipt, not an alarm. You'll only hear
+        an alarm when a run tries hard and still can't refill the queue.</p>`,
+    }),
+  });
 }
 
 async function sendLowQueueAlert(env, queued, through, rejected) {
