@@ -106,7 +106,7 @@ async function serveHealth(env) {
 // merged state back. Cross-origin by design, so full CORS. No identifiers
 // beyond the random id, no auth — the data is a handful of booleans a day.
 
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes"]);
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec"]);
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -127,7 +127,7 @@ async function serveDocket(url, request, env) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -151,7 +151,7 @@ async function serveDocket(url, request, env) {
     ).bind(id, date).run();
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -262,6 +262,7 @@ function docketPlayed(row) {
     twentee: !!row?.twentee,
     spellbound: !!row?.spellbound,
     guffinoes: !!row?.guffinoes,
+    hexadec: !!row?.hexadec,
   };
 }
 

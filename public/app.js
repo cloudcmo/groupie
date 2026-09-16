@@ -386,6 +386,7 @@
         if (solved.length === 4) {
           finished = true;
           renderBoard();
+          jiggleLives();
           finish(true);
         } else {
           saveProgress();
@@ -404,6 +405,14 @@
       app.querySelectorAll("button.tile.shake").forEach((b) => b.classList.remove("shake"));
     }, 450);
 
+    // Power down one GuffBot (the newest casualty animates, the rest just sit).
+    const dock = app.querySelector(".lives");
+    if (dock) {
+      const spent = LIVES - lives;
+      dock.innerHTML = `Lives ${Array.from({ length: LIVES }, (_, i) =>
+        `<span class="life ${i < spent - 1 ? "spent" : i === spent - 1 ? "dying" : ""}"></span>`).join("")}`;
+    }
+
     if (lives <= 0) {
       finished = true;
       toast("Game over");
@@ -413,12 +422,13 @@
 
     toast(best === 3 ? "Missed by one" : "Miss");
     saveProgress();
-    // Refresh the lives dots without a full re-render.
-    const dock = app.querySelector(".lives");
-    if (dock) {
-      dock.innerHTML = `Lives ${Array.from({ length: LIVES }, (_, i) =>
-        `<span class="life ${i < LIVES - lives ? "spent" : ""}"></span>`).join("")}`;
-    }
+  }
+
+  // The survivors celebrate a cleared grid.
+  function jiggleLives() {
+    app.querySelectorAll(".life:not(.spent):not(.dying)").forEach((el, i) => {
+      setTimeout(() => el.classList.add("jiggle"), i * 90);
+    });
   }
 
   function revealRemaining() {

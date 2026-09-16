@@ -1,0 +1,13 @@
+-- Hexadec is Guff game no. 8. One column on the docket.
+--
+-- Until this is applied to the LIVE D1, every Hexadec docket tick and league
+-- score is dropped with a 400 for everyone, and the bar shows nothing.
+--
+-- Apply with the Cloudflare connector, or from the Mac:
+--   cd ~/code/groupie
+--   npx wrangler d1 execute groupie --remote --command "ALTER TABLE docket ADD COLUMN hexadec INTEGER NOT NULL DEFAULT 0;"
+--
+-- Then redeploy groupie, or src/index.js still will not know the game exists:
+--   cd ~/code/groupie
+--   npx wrangler deploy
+ALTER TABLE docket ADD COLUMN hexadec INTEGER NOT NULL DEFAULT 0;

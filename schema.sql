@@ -27,8 +27,24 @@ CREATE TABLE IF NOT EXISTS docket (
   whatword INTEGER NOT NULL DEFAULT 0,
   groupie INTEGER NOT NULL DEFAULT 0,
   twentee INTEGER NOT NULL DEFAULT 0,
+  spellbound INTEGER NOT NULL DEFAULT 0,
+  guffinoes INTEGER NOT NULL DEFAULT 0,
+  hexadec INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (id, date)
 );
+
+-- Arrivals: one row per anonymous id per game per day, with the ?ref= the
+-- page was opened with (the Friday email tags its links ref=friday). Written
+-- by POST /api/visit from guff-bar.js on every page load; read back as
+-- aggregates by GET /api/sources for the daily report. Pruned after 60 days.
+CREATE TABLE IF NOT EXISTS visits (
+  id TEXT NOT NULL,
+  date TEXT NOT NULL,             -- YYYY-MM-DD (UK day)
+  game TEXT NOT NULL,             -- pqd | whenly | whatword | groupie | twentee | spellbound | guffinoes
+  ref TEXT,                       -- e.g. 'friday'; NULL when they just turned up
+  PRIMARY KEY (id, date, game)
+);
+CREATE INDEX IF NOT EXISTS idx_visits_date ON visits(date);
 
 -- Every group name ever published, so no category is served twice.
 CREATE TABLE IF NOT EXISTS categories (
@@ -51,7 +67,7 @@ CREATE TABLE IF NOT EXISTS players (
 CREATE TABLE IF NOT EXISTS league_scores (
   id TEXT NOT NULL,
   date TEXT NOT NULL,             -- YYYY-MM-DD (UK day)
-  game TEXT NOT NULL,             -- pqd | whenly | whatword | groupie | twentee
+  game TEXT NOT NULL,             -- pqd | whenly | whatword | groupie | twentee | spellbound | guffinoes
   score INTEGER NOT NULL,         -- higher is better, game-native scale
   max INTEGER NOT NULL DEFAULT 0,
   display TEXT NOT NULL DEFAULT '',  -- "9/10", "in 7" — as the game says it
