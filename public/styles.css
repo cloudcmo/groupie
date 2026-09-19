@@ -251,7 +251,15 @@ body::after {
   transition: filter 0.25s ease, opacity 0.25s ease, transform 0.25s ease;
   transform-origin: 50% 90%;
 }
-.life::before { content: "🤖"; }
+/* GuffBot as a picture (19 Sept 2026; he was the 🤖 emoji). Sized in em so he stays the size the emoji was. */
+.life::before {
+  content: "";
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.22em;
+  background: url("guffbot.webp") center / contain no-repeat;
+}
 .life.spent {
   filter: grayscale(1) brightness(0.45);
   opacity: 0.55;
