@@ -106,7 +106,9 @@ async function serveHealth(env) {
 // merged state back. Cross-origin by design, so full CORS. No identifiers
 // beyond the random id, no auth — the data is a handful of booleans a day.
 
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec"]);
+// wagdaily (Words and Guff Daily) took Twentee's place on 20 Sept 2026. twentee stays accepted
+// so its column and old rows keep working; its page stops reporting once the bar drops it.
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily"]);
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -127,7 +129,7 @@ async function serveDocket(url, request, env) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -151,7 +153,7 @@ async function serveDocket(url, request, env) {
     ).bind(id, date).run();
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -208,38 +210,59 @@ async function serveSources(url, request, env) {
   const out = {};
   for (const g of games) out[g] = { visits: 0, completed: 0, refs: {} };
 
+  // TOTALS come from a query with no ref join in it at all.
+  //
+  // Since 2026-09-17 the Friday email tags each LINK separately
+  // (friday-hero, friday-card-whatword, …), so one person can now carry two or
+  // three different refs in a day. The id→ref subquery below is therefore
+  // one-to-MANY, and folding the totals out of that join would count such a
+  // person once per ref — silently inflating the plain "visited" and
+  // "finished" numbers, which have nothing to do with the email. Keep the two
+  // apart.
+  const { results: visitTotals } = await env.DB.prepare(
+    `SELECT game, COUNT(DISTINCT id) AS n FROM visits WHERE date = ? GROUP BY game`
+  ).bind(date).all();
+  for (const r of visitTotals || []) {
+    if (!out[r.game]) continue;
+    out[r.game].visits += r.n;
+  }
+
+  const sums = games.map((g) => `SUM(d.${g}) AS ${g}`).join(", ");
+  const doneTotals = await env.DB.prepare(
+    `SELECT ${sums} FROM docket d WHERE d.date = ?`
+  ).bind(date).first();
+  for (const g of games) out[g].completed += (doneTotals && doneTotals[g]) || 0;
+
+  // BREAKDOWN by ref. These may legitimately sum to more than the total above:
+  // a person who pressed both the hero button and a game card appears under
+  // both refs. Read each ref as "how many people arrived carrying this link",
+  // not as a share of a whole.
   const { results: visitRows } = await env.DB.prepare(
     `SELECT v.game, r.ref, COUNT(DISTINCT v.id) AS n
        FROM visits v
-       LEFT JOIN (SELECT DISTINCT id, ref FROM visits WHERE date = ? AND ref IS NOT NULL) r ON r.id = v.id
+       JOIN (SELECT DISTINCT id, ref FROM visits WHERE date = ? AND ref IS NOT NULL) r ON r.id = v.id
       WHERE v.date = ?
       GROUP BY v.game, r.ref`
   ).bind(date, date).all();
   for (const r of visitRows || []) {
-    if (!out[r.game]) continue;
-    out[r.game].visits += r.n;
-    if (r.ref) {
-      out[r.game].refs[r.ref] = out[r.game].refs[r.ref] || { visits: 0, completed: 0 };
-      out[r.game].refs[r.ref].visits += r.n;
-    }
+    if (!out[r.game] || !r.ref) continue;
+    out[r.game].refs[r.ref] = out[r.game].refs[r.ref] || { visits: 0, completed: 0 };
+    out[r.game].refs[r.ref].visits += r.n;
   }
 
-  const sums = games.map((g) => `SUM(d.${g}) AS ${g}`).join(", ");
   const { results: doneRows } = await env.DB.prepare(
     `SELECT r.ref, ${sums}
        FROM docket d
-       LEFT JOIN (SELECT DISTINCT id, ref FROM visits WHERE date = ? AND ref IS NOT NULL) r ON r.id = d.id
+       JOIN (SELECT DISTINCT id, ref FROM visits WHERE date = ? AND ref IS NOT NULL) r ON r.id = d.id
       WHERE d.date = ?
       GROUP BY r.ref`
   ).bind(date, date).all();
   for (const r of doneRows || []) {
+    if (!r.ref) continue;
     for (const g of games) {
       const n = r[g] || 0;
-      out[g].completed += n;
-      if (r.ref) {
-        out[g].refs[r.ref] = out[g].refs[r.ref] || { visits: 0, completed: 0 };
-        out[g].refs[r.ref].completed += n;
-      }
+      out[g].refs[r.ref] = out[g].refs[r.ref] || { visits: 0, completed: 0 };
+      out[g].refs[r.ref].completed += n;
     }
   }
 
@@ -263,6 +286,7 @@ function docketPlayed(row) {
     spellbound: !!row?.spellbound,
     guffinoes: !!row?.guffinoes,
     hexadec: !!row?.hexadec,
+    wagdaily: !!row?.wagdaily,
   };
 }
 

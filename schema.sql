@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS docket (
   spellbound INTEGER NOT NULL DEFAULT 0,
   guffinoes INTEGER NOT NULL DEFAULT 0,
   hexadec INTEGER NOT NULL DEFAULT 0,
+  wagdaily INTEGER NOT NULL DEFAULT 0,   -- Words and Guff Daily, added 20 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
   PRIMARY KEY (id, date)
 );
 
