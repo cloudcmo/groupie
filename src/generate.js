@@ -111,6 +111,30 @@ LETTER-SURGERY RULES (non-negotiable — one sloppy tile ruins the day)
 - Group names are part of the entertainment: precise but with a wink.
   "Cockney for parts of the body", not "Slang terms".
 
+LABEL FIT (checked by machine and by the fact-checker — a misfit kills the day)
+- ONE label, ONE pattern. Every tile must fit the group name LITERALLY. For
+  a blank group the name is exactly the pattern ("___ MOON", "BLACK ___")
+  and each base is that pattern with the tile dropped in, nothing added or
+  altered: HONEY + MOON = HONEYMOON. DUST does not fit "___ MILLER" — the
+  phrase is DUSTY Miller, so the tile would have to be DUSTY. NEVER stitch
+  patterns together ("___ sandwich / ___ sole / ___ or no ___"): if four
+  tiles do not share ONE pattern, you do not have a group — start again.
+- Never rescue a group by bending its label or inventing a tile. Hidden-word
+  tiles are written as they are normally written: PEARTREE and DATESYRUP are
+  two words pushed together, not words. And the hidden word must truly be a
+  member of the set: TEN and FIVE are not coins.
+- In a "what X might refer to" or "things that can be X" group, no tile may
+  contain X itself (DUSTBIN cannot sit in a BIN group), and every tile must
+  genuinely BE a sense of X or complete a standard phrase with it. A loose
+  association (DENTIST for drill, OSAMA for bin) is not membership.
+- No tile may repeat a word used on the grid in the last seven days — the
+  recent word-sets are listed for you below.
+
+VARY THE FURNITURE
+- "What X might refer to" and "Things that can be X" are two formats among
+  many, not the daily template. Most days should use neither. When the
+  editor's note below bars a format, do not use it or a rewording of it.
+
 RED HERRINGS ARE THE CRAFT (this is what separates a real puzzle from a sort)
 - At least three answers must plausibly belong to a DIFFERENT group than the
   one that owns them. Example of the standard: the grid contains JOHN, PAUL,
@@ -261,6 +285,77 @@ function checkPair(tool, pos, tile, base) {
   }
 }
 
+// ─── Machine check: labels, keywords, repeats, ruts ─────────────────────────
+// All free, all run before the paid verifier. Each one exists because a bad
+// day reached players or the queue in September 2026: a stitched label
+// ("___ sandwich / ___ sole / ___ or no ___"), DUST filed under "___ miller",
+// DUSTBIN filed under 'bin', EGG three times in a week, and "What X might
+// refer to" as the level 3 group nineteen days out of twenty.
+
+const norm = (t) => String(t).toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+const RUT_FORMATS = [
+  { label: "What X might refer to / might mean", re: /^what .+ might (refer to|mean)/i },
+  { label: "Things that can be X", re: /^things that (can be|are) /i },
+];
+
+// Formats used 2+ times in the last five days' categories are barred today.
+export function overusedFormats(usedCategories) {
+  const recent = [...usedCategories].slice(-20);
+  return RUT_FORMATS.filter((f) => recent.filter((c) => f.re.test(c)).length >= 2);
+}
+
+export function checkLabels(parsed, usedCategories, recentGroups = []) {
+  const barred = overusedFormats(usedCategories);
+  // Newest sets come first from the loader (7 days = 28 sets); sets written
+  // during this run are pushed on the end and tagged fresh.
+  const recentWords = new Set();
+  recentGroups.forEach((set, i) => {
+    if (i < 28 || set.fresh) for (const w of set) recentWords.add(w);
+  });
+
+  for (const g of parsed.groups) {
+    const name = g.name.trim();
+    const tiles = g.words.map((w) => String(w).trim().toUpperCase());
+
+    for (const f of barred)
+      if (f.re.test(name))
+        return `Group "${name}" uses the format "${f.label}", which has been overused this week — use a different kind of group`;
+
+    const blanks = name.match(/_{2,}/g) || [];
+    if (blanks.length > 1)
+      return `Group "${name}" stitches several blank patterns together — one label, one pattern, and every tile must fit it`;
+
+    for (const t of tiles)
+      if (recentWords.has(t)) return `"${t}" was already on the grid within the last seven days`;
+
+    if (g.difficulty !== 3) {
+      const keys = [...name.matchAll(/['\u2018\u2019"\u201C\u201D]([A-Za-z][A-Za-z -]{2,})['\u2018\u2019"\u201C\u201D]/g)].map((m) => norm(m[1]));
+      for (const m of name.matchAll(/\b[A-Z]{3,}\b/g)) keys.push(m[0]);
+      for (const k of keys)
+        for (const t of tiles)
+          if (norm(t).includes(k))
+            return `Tile "${t}" contains its own group's keyword "${k}" — it gives the label away`;
+    }
+
+    // Blank groups: the base must be the label with the tile dropped in,
+    // exactly. Only enforced when the name is a bare pattern ("___ MOON").
+    if (g.difficulty === 3 && parsed.wordplay && parsed.wordplay.tool === "blank" && blanks.length === 1) {
+      const bare = name.replace(/\([^)]*\)/g, "").trim();
+      const [pre, post] = bare.split(/_{2,}/);
+      const fixedWords = (pre + " " + post).trim().split(/\s+/).filter(Boolean);
+      if (fixedWords.length >= 1 && fixedWords.length <= 2) {
+        for (const p of parsed.wordplay.pairs || []) {
+          const want = norm(pre) + norm(p.tile) + norm(post);
+          if (norm(p.base) !== want)
+            return `"${String(p.tile).toUpperCase()}" does not fit "${bare}": the completed phrase was given as "${p.base}", which is not the label with the tile dropped in`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // ─── Second pass: adversarial verification ──────────────────────────────────
 // The generator is imaginative; this pass is ruthless. The letter arithmetic
 // has already been machine-checked by the time a grid reaches here, so this
@@ -297,6 +392,19 @@ CHECK, in order:
    rhymes and added syllables are fails.
 5. Membership truth. Every word in every group must genuinely belong to
    the group as named, in a UK frame. One wrong member is a fail.
+6. Literal label fit. For EVERY group, drop each tile into the group name
+   and read the result: "DUST Miller" (it is DUSTY Miller), "PECKISH down",
+   a label that stitches several patterns together with slashes — all
+   fails. Four tiles, one pattern, fitted exactly.
+7. Senses, not associations. In a "what X might refer to" / "things that
+   can be X" group each tile must genuinely be a sense of X or form a
+   standard phrase with it. A tile containing X itself (DUSTBIN under
+   "bin"), a mere association (DENTIST under "drill"), or a joke on a
+   name (OSAMA under "bin") is a fail.
+8. Natural spelling. A hidden-word tile must be written as it is normally
+   written. Two words pushed together to pass as one (PEARTREE,
+   DATESYRUP) is a fail, and the hidden word must be a true member of
+   the named set (TEN is not a coin).
 Do NOT fail a puzzle for being easy, hard, or stylistically dull — soundness
 only.
 
@@ -378,6 +486,13 @@ export async function generateDay(env, date, usedCategories, recentGroups = [], 
     `wordplay group with exactly that tool and declare it in wordplay.tool. ` +
     `Letter surgery (change/add/remove-letter) and anagrams are reserved for ` +
     `hand-set days — never choose them yourself.` +
+    (overusedFormats(usedCategories).length
+      ? `\n\nEDITOR'S NOTE — FORMATS BARRED TODAY (overused this week, and a grid ` +
+        `using one is rejected by machine): ` +
+        overusedFormats(usedCategories).map((f) => `"${f.label}"`).join(" and ") +
+        `. Build levels 2 and 3 from other material: a knowledge category with a ` +
+        `British accent, a physical-property group, a synonym cluster, a famous set.`
+      : "") +
     // Learn from the last failure instead of repeating it: with 140+ used
     // categories the archive is a minefield, and a blind retry walks the
     // same path (scone spreads, two minutes after toast spreads was binned).
@@ -481,6 +596,9 @@ export function validateDay(parsed, usedCategories, recentGroups = []) {
   );
   const wordplayProblem = checkWordplay(parsed.wordplay, level4Words);
   if (wordplayProblem) return wordplayProblem;
+
+  const labelProblem = checkLabels(parsed, usedCategories, recentGroups);
+  if (labelProblem) return labelProblem;
 
   if (typeof parsed.trap !== "string" || parsed.trap.trim().length < 20)
     return "No trap described — a grid without red herrings is a sort, not a puzzle";

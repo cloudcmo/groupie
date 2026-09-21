@@ -588,7 +588,11 @@ async function fillRange(env, start, days, maxAttempts = 1) {
       ),
     ]);
     for (const c of result.categories) usedCategories.add(c);
-    for (const g of result.payload.groups) recentGroups.push(new Set(g.words));
+    for (const g of result.payload.groups) {
+      const set = new Set(g.words);
+      set.fresh = true; // written this run — checkLabels treats it as recent
+      recentGroups.push(set);
+    }
     written.push(date);
   }
 
