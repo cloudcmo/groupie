@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS docket (
   guffinoes INTEGER NOT NULL DEFAULT 0,
   hexadec INTEGER NOT NULL DEFAULT 0,
   wagdaily INTEGER NOT NULL DEFAULT 0,   -- Words and Guff Daily, added 20 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
+  wordminer INTEGER NOT NULL DEFAULT 0,  -- Wordminer, added 25 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
+  guffitaire INTEGER NOT NULL DEFAULT 0, -- Guffitaire, added 25 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
   PRIMARY KEY (id, date)
 );
 

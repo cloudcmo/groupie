@@ -108,7 +108,8 @@ async function serveHealth(env) {
 
 // wagdaily (Words and Guff Daily) took Twentee's place on 20 Sept 2026. twentee stays accepted
 // so its column and old rows keep working; its page stops reporting once the bar drops it.
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily"]);
+// wordminer and guffitaire joined the canon on 25 Sept 2026 (Guff games nine and ten).
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire"]);
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -129,7 +130,7 @@ async function serveDocket(url, request, env) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -153,7 +154,7 @@ async function serveDocket(url, request, env) {
     ).bind(id, date).run();
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -287,6 +288,8 @@ function docketPlayed(row) {
     guffinoes: !!row?.guffinoes,
     hexadec: !!row?.hexadec,
     wagdaily: !!row?.wagdaily,
+    wordminer: !!row?.wordminer,
+    guffitaire: !!row?.guffitaire,
   };
 }
 
