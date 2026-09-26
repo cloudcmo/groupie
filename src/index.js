@@ -475,12 +475,24 @@ async function serveLeague(url, request, env, path) {
     // Today or yesterday only, and never twice: first score of the day stands.
     if (date !== today && date !== addDays(today, -1))
       return docketJson({ error: "Bad date" }, 400);
-    await env.DB.prepare(
+    // All-time record? Judged against what the all-time table shows (signed
+    // players only), before this score goes in, and only once a game has a
+    // history worth beating: the first fortnight of a new game is not a
+    // record every morning. Feeds the bar's celebration line (26 Sept 2026).
+    const RECORD_MIN_SCORES = 20;
+    const prior = await env.DB.prepare(
+      `SELECT MAX(s.score) AS best, COUNT(*) AS n
+       FROM league_scores s JOIN players p ON p.id = s.id
+       WHERE s.game = ? AND NOT (s.id = ? AND s.date = ?)`
+    ).bind(game, id, date).first();
+    const ins = await env.DB.prepare(
       `INSERT OR IGNORE INTO league_scores (id, date, game, score, max, display)
        VALUES (?, ?, ?, ?, ?, ?)`
     ).bind(id, date, game, score, max, display).run();
+    const stored = !!(ins && ins.meta && ins.meta.changes);
+    const record = stored && score > 0 && (prior?.n || 0) >= RECORD_MIN_SCORES && score > (prior?.best || 0);
     const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
-    return docketJson({ ok: true, initials: p ? p.initials : null });
+    return docketJson({ ok: true, initials: p ? p.initials : null, stored, record });
   }
 
   // GET /api/league?date=&mode=today|all → the tables
