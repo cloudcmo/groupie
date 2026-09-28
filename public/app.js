@@ -515,10 +515,11 @@
 
     // "More daily guff" — the cross-sell bar shared by all four games
     const resultsEl = slot.querySelector(".results");
-    if (window.GuffBar && resultsEl) {
+    if (resultsEl) whenGuffBar(function () {
+      if (!window.GuffBar) return;
       if (mode === "daily") GuffBar.completedToday(resultsEl, { score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX });
       else if (mode === "archive") GuffBar.show(resultsEl);
-    }
+    });
 
     slot.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -696,4 +697,17 @@
   window.addEventListener("hashchange", route);
 
   route();
+  /* The Guff bar script is deferred and loads from another origin, so it can
+       arrive after this code wants it: reopening a finished day could draw the
+       result before window.GuffBar existed, and the bar (NEXT UP, the league)
+       never appeared. Wait for it (28 Sept 2026). If it never loads, no bar. */
+  function whenGuffBar(fn) {
+    if (window.GuffBar) { fn(); return; }
+    var done = false;
+    var go = function () { if (!done) { done = true; fn(); } };
+    var tag = document.querySelector('script[src*="guff-bar.js"]');
+    if (tag) { tag.addEventListener("load", go, { once: true }); tag.addEventListener("error", go, { once: true }); }
+    window.addEventListener("load", go, { once: true });
+  }
+
 })();
