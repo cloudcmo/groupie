@@ -509,11 +509,19 @@ async function serveLeague(url, request, env, path) {
          WHERE s.date = ? ORDER BY s.score DESC, s.rowid ASC`
       ).bind(date).all());
     } else {
-      // All-time: each player's best per game, newest date wins ties.
+      // All-time: the best scores ever per game, whoever set them. One person on a
+      // roll can hold every row, and a tie goes to whoever got there first (29 Sept
+      // 2026; was one row per player). Ten per game is all the table shows.
       ({ results: rows } = await env.DB.prepare(
-        `SELECT s.game, MAX(s.score) AS score, s.max, s.display, p.initials, s.date
+        `SELECT s.game, s.score, s.max, s.display, p.initials, s.date
          FROM league_scores s JOIN players p ON p.id = s.id
-         GROUP BY s.id, s.game ORDER BY score DESC`
+         WHERE s.score > 0 AND s.rowid IN (
+           SELECT rowid FROM (
+             SELECT rowid, ROW_NUMBER() OVER (PARTITION BY game ORDER BY score DESC, date ASC, rowid ASC) AS rn
+             FROM league_scores
+           ) WHERE rn <= 10
+         )
+         ORDER BY s.score DESC, s.date ASC, s.rowid ASC`
       ).all());
     }
 
