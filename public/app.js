@@ -574,7 +574,7 @@
     const resultsEl = slot.querySelector(".results");
     if (resultsEl) whenGuffBar(function () {
       if (!window.GuffBar) return;
-      if (mode === "daily") GuffBar.completedToday(resultsEl, { score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX, ms: ms === null ? undefined : ms });
+      if (mode === "daily") GuffBar.completedToday(resultsEl, { date: day.date, score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX, ms: ms === null ? undefined : ms });
       else if (mode === "archive") GuffBar.show(resultsEl);
     });
 

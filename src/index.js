@@ -510,7 +510,15 @@ async function serveLeague(url, request, env, path) {
       (ms !== null && score === prior?.best && (fastestAtBest === null || ms < fastestAtBest));
     const record = stored && score > 0 && (prior?.n || 0) >= RECORD_MIN_SCORES && beats;
     const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
-    return docketJson({ ok: true, initials: p ? p.initials : null, stored, record });
+    // Not stored means an earlier score already holds this day: hand it back
+    // so the bar can say which score counts (30 Sept 2026).
+    let existing = null;
+    if (!stored) {
+      existing = await env.DB.prepare(
+        "SELECT score, max, display FROM league_scores WHERE id = ? AND date = ? AND game = ?"
+      ).bind(id, date, game).first();
+    }
+    return docketJson({ ok: true, initials: p ? p.initials : null, stored, record, existing });
   }
 
   // GET /api/league?date=&mode=today|all → the tables
