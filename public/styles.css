@@ -283,8 +283,10 @@ body::after {
 /* Lives and the running score sit shoulder to shoulder above the controls. */
 .meters {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 26px;
+  gap: 10px 26px;
 }
 .scorebox {
   font-family: var(--px);
@@ -402,6 +404,16 @@ button.pill.loud:disabled {
 .scoreline.full {
   color: var(--g3);
   text-shadow: 0 0 8px rgba(255, 59, 78, 0.75), 0 0 26px rgba(255, 59, 78, 0.4);
+}
+
+/* Time taken, the league tie-break (30 Sept 2026). */
+.timeline {
+  margin-top: 8px;
+  font-family: var(--px);
+  font-size: 0.5rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 
 .subline { color: var(--text-dim); font-size: 1.05rem; margin-top: 8px; }

@@ -157,6 +157,56 @@
     return (data.state && data.state[date]) || null;
   }
 
+  // ── The clock ────────────────────────────────────────────────────────────
+  // Time is the league tie-break (30 Sept 2026): equal scores rank fastest
+  // first, and a score with no time sits below one with a time. The clock
+  // starts the first time today's grid is on screen and stops at the finish.
+  // Start and stop are kept per date, so a reload neither resets nor pauses it.
+  // A grid already half played before the clock existed stays untimed (s: 0).
+
+  const CLOCK_KEY = "groupie_clock";
+  let clockTimer = null;
+
+  function clockRead() {
+    try { return JSON.parse(localStorage.getItem(CLOCK_KEY) || "{}"); } catch { return {}; }
+  }
+  function clockWrite(c) {
+    const keep = Object.keys(c).sort().slice(-7); // a week is plenty
+    const out = {};
+    keep.forEach((k) => { out[k] = c[k]; });
+    try { localStorage.setItem(CLOCK_KEY, JSON.stringify(out)); } catch {}
+  }
+  function clockStart(date, resuming) {
+    const c = clockRead();
+    if (!c[date]) { c[date] = { s: resuming ? 0 : Date.now() }; clockWrite(c); }
+    tickClock();
+    clearInterval(clockTimer);
+    clockTimer = setInterval(tickClock, 1000);
+  }
+  function clockStop(date) {
+    clearInterval(clockTimer);
+    const c = clockRead();
+    const e = c[date];
+    if (e && e.s && !e.e) { e.e = Date.now(); clockWrite(c); }
+    return clockMs(date);
+  }
+  function clockMs(date) {
+    const e = clockRead()[date];
+    if (!e || !e.s) return null;
+    return Math.max(1, (e.e || Date.now()) - e.s);
+  }
+  function clockText(ms) {
+    const t = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = String(t % 60).padStart(2, "0");
+    return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+  }
+  function tickClock() {
+    const el = document.getElementById("clock-n");
+    if (!el || !day) return;
+    const ms = clockMs(day.date);
+    el.textContent = ms === null ? "--:--" : clockText(ms);
+  }
+
   // ── Fetch ────────────────────────────────────────────────────────────────
 
   async function fetchJSON(url) {
@@ -191,6 +241,7 @@
 
   function startRound() {
     updateIssueLine();
+    clearInterval(clockTimer);
 
     const prior = mode !== "builtin" ? (store.read().results || {})[day.date] : null;
     if (prior) {
@@ -229,6 +280,7 @@
     finished = false;
     revealed = new Set();
     renderBoard();
+    if (mode === "daily") clockStart(day.date, !!(saved && Array.isArray(saved.tiles)));
   }
 
   function updateIssueLine() {
@@ -325,6 +377,7 @@
             `<span class="life ${i < LIVES - lives ? "spent" : ""}"></span>`).join("")}
           </div>
           <div class="scorebox">Score <span class="n">${runningScore()}</span></div>
+          ${mode === "daily" ? `<div class="scorebox clockbox">Time <span class="n" id="clock-n">${day && clockMs(day.date) !== null ? clockText(clockMs(day.date)) : "--:--"}</span></div>` : ""}
         </div>
         <div class="controls">
           <button class="pill" id="shuffle-btn">Scramble</button>
@@ -385,6 +438,7 @@
         tiles = tiles.filter((w) => !day.groups[gi].words.includes(w));
         if (solved.length === 4) {
           finished = true;
+          if (mode === "daily") clockStop(day.date);
           renderBoard();
           jiggleLives();
           finish(true);
@@ -415,6 +469,7 @@
 
     if (lives <= 0) {
       finished = true;
+      if (mode === "daily") clockStop(day.date);
       toast("Game over");
       setTimeout(() => revealRemaining(), 700);
       return;
@@ -479,6 +534,7 @@
 
     const data = dataArg || store.read();
     const streak = data.streak || 0;
+    const ms = mode === "daily" ? clockMs(day.date) : null;
     const played = data.played || 0;
     const winRate = played ? Math.round(((data.wins || 0) / played) * 100) : 0;
 
@@ -493,6 +549,7 @@
       <div class="results">
         <div class="verdict ${won ? "" : "lost"}">${verdict}</div>
         <div class="scoreline ${score === SCORE_MAX ? "full" : ""}">score ${score}<span class="of">/${SCORE_MAX}</span></div>
+        ${ms !== null ? `<div class="timeline">time ${clockText(ms)}</div>` : ""}
         <div class="subline">${replay ? "You've already played this grid." : esc(subline)}</div>
         ${streakLine}
         <div class="stats">
@@ -517,7 +574,7 @@
     const resultsEl = slot.querySelector(".results");
     if (resultsEl) whenGuffBar(function () {
       if (!window.GuffBar) return;
-      if (mode === "daily") GuffBar.completedToday(resultsEl, { score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX });
+      if (mode === "daily") GuffBar.completedToday(resultsEl, { score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX, ms: ms === null ? undefined : ms });
       else if (mode === "archive") GuffBar.show(resultsEl);
     });
 
@@ -530,7 +587,9 @@
       .join("\n");
     const verdict = verdictFor(won, mistakes).toUpperCase();
     const score = scoreFromRows(guesses);
-    const text = `Groupie № ${day.number} — ${verdict} — ${score}/${SCORE_MAX}\n${rows}\nyour daily four play\n${location.origin.replace(/^https?:\/\//, "")}`;
+    const ms = mode === "daily" ? clockMs(day.date) : null;
+    const time = ms !== null ? ` in ${clockText(ms)}` : "";
+    const text = `Groupie № ${day.number} — ${verdict} — ${score}/${SCORE_MAX}${time}\n${rows}\nyour daily four play\n${location.origin.replace(/^https?:\/\//, "")}`;
     if (navigator.share) {
       navigator.share({ text }).catch(() => {});
     } else {

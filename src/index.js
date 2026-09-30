@@ -457,7 +457,9 @@ async function serveLeague(url, request, env, path) {
     return docketJson({ ok: true, initials });
   }
 
-  // POST /api/league/score { id, date, game, score, max, display }
+  // POST /api/league/score { id, date, game, score, max, display, ms? }
+  // ms: time taken, the tie-break (30 Sept 2026). Equal scores rank timed above
+  // untimed, then fastest first, then whoever got there first.
   // Scores are stored even before initials exist — the join hides them
   // until the player signs the cabinet.
   if (path === "/api/league/score" && request.method === "POST") {
@@ -469,6 +471,9 @@ async function serveLeague(url, request, env, path) {
     const score = Math.max(0, Math.min(9999, parseInt(body.score, 10) || 0));
     const max = Math.max(0, Math.min(9999, parseInt(body.max, 10) || 0));
     const display = String(body.display || "").slice(0, 24);
+    // A time is a real number of milliseconds under a day, or nothing.
+    const msRaw = parseInt(body.ms, 10);
+    const ms = Number.isFinite(msRaw) && msRaw > 0 && msRaw < 86400000 ? msRaw : null;
     if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
     if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
@@ -485,12 +490,25 @@ async function serveLeague(url, request, env, path) {
        FROM league_scores s JOIN players p ON p.id = s.id
        WHERE s.game = ? AND NOT (s.id = ? AND s.date = ?)`
     ).bind(game, id, date).first();
+    // Equalling the best score can still be a record now: the fastest time at
+    // that score, or the first time at all if nobody at that score was timed.
+    let fastestAtBest = null;
+    if (ms !== null && prior && prior.best !== null && score === prior.best) {
+      const f = await env.DB.prepare(
+        `SELECT MIN(s.ms) AS fastest
+         FROM league_scores s JOIN players p ON p.id = s.id
+         WHERE s.game = ? AND s.score = ? AND NOT (s.id = ? AND s.date = ?)`
+      ).bind(game, score, id, date).first();
+      fastestAtBest = f ? f.fastest : null;
+    }
     const ins = await env.DB.prepare(
-      `INSERT OR IGNORE INTO league_scores (id, date, game, score, max, display)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).bind(id, date, game, score, max, display).run();
+      `INSERT OR IGNORE INTO league_scores (id, date, game, score, max, display, ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, date, game, score, max, display, ms).run();
     const stored = !!(ins && ins.meta && ins.meta.changes);
-    const record = stored && score > 0 && (prior?.n || 0) >= RECORD_MIN_SCORES && score > (prior?.best || 0);
+    const beats = score > (prior?.best || 0) ||
+      (ms !== null && score === prior?.best && (fastestAtBest === null || ms < fastestAtBest));
+    const record = stored && score > 0 && (prior?.n || 0) >= RECORD_MIN_SCORES && beats;
     const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
     return docketJson({ ok: true, initials: p ? p.initials : null, stored, record });
   }
@@ -504,24 +522,28 @@ async function serveLeague(url, request, env, path) {
     let rows;
     if (mode === "today") {
       ({ results: rows } = await env.DB.prepare(
-        `SELECT s.id, s.game, s.score, s.max, s.display, p.initials
+        `SELECT s.id, s.game, s.score, s.max, s.display, s.ms, p.initials
          FROM league_scores s JOIN players p ON p.id = s.id
-         WHERE s.date = ? ORDER BY s.score DESC, s.rowid ASC`
+         WHERE s.date = ? ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC`
       ).bind(date).all());
     } else {
       // All-time: the best scores ever per game, whoever set them. One person on a
       // roll can hold every row, and a tie goes to whoever got there first (29 Sept
       // 2026; was one row per player). Ten per game is all the table shows.
+      // Since 30 Sept 2026 time breaks a tie before the date does: timed above
+      // untimed, fastest first (so 24/24 with no time sits below 24/24 with one).
       ({ results: rows } = await env.DB.prepare(
-        `SELECT s.game, s.score, s.max, s.display, p.initials, s.date
+        `SELECT s.game, s.score, s.max, s.display, s.ms, p.initials, s.date
          FROM league_scores s JOIN players p ON p.id = s.id
          WHERE s.score > 0 AND s.rowid IN (
            SELECT rowid FROM (
-             SELECT rowid, ROW_NUMBER() OVER (PARTITION BY game ORDER BY score DESC, date ASC, rowid ASC) AS rn
+             SELECT rowid, ROW_NUMBER() OVER (
+               PARTITION BY game ORDER BY score DESC, (ms IS NULL) ASC, ms ASC, date ASC, rowid ASC
+             ) AS rn
              FROM league_scores
            ) WHERE rn <= 10
          )
-         ORDER BY s.score DESC, s.date ASC, s.rowid ASC`
+         ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.date ASC, s.rowid ASC`
       ).all());
     }
 
@@ -535,7 +557,7 @@ async function serveLeague(url, request, env, path) {
       ranks[r.game] = (ranks[r.game] || 0) + 1;
       if (askMe && r.id === meId)
         meGames[r.game] = {
-          score: r.score, max: r.max, display: r.display, rank: ranks[r.game],
+          score: r.score, max: r.max, display: r.display, ms: r.ms, rank: ranks[r.game],
         };
       if (games[r.game].length < 10)
         games[r.game].push({
@@ -543,6 +565,7 @@ async function serveLeague(url, request, env, path) {
           score: r.score,
           max: r.max,
           display: r.display,
+          ms: r.ms,
           ...(mode === "all" ? { date: r.date } : {}),
         });
     }

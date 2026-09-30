@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS league_scores (
   score INTEGER NOT NULL,         -- higher is better, game-native scale
   max INTEGER NOT NULL DEFAULT 0,
   display TEXT NOT NULL DEFAULT '',  -- "9/10", "in 7" — as the game says it
+  ms INTEGER,                     -- time taken in ms (tie-break; NULL = untimed), since 30 Sept 2026
   PRIMARY KEY (id, date, game)
 );
 
