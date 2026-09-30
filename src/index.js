@@ -502,8 +502,8 @@ async function serveLeague(url, request, env, path) {
       fastestAtBest = f ? f.fastest : null;
     }
     const ins = await env.DB.prepare(
-      `INSERT OR IGNORE INTO league_scores (id, date, game, score, max, display, ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT OR IGNORE INTO league_scores (id, date, game, score, max, display, ms, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     ).bind(id, date, game, score, max, display, ms).run();
     const stored = !!(ins && ins.meta && ins.meta.changes);
     const beats = score > (prior?.best || 0) ||
@@ -530,7 +530,7 @@ async function serveLeague(url, request, env, path) {
     let rows;
     if (mode === "today") {
       ({ results: rows } = await env.DB.prepare(
-        `SELECT s.id, s.game, s.score, s.max, s.display, s.ms, p.initials
+        `SELECT s.id, s.game, s.score, s.max, s.display, s.ms, s.at, p.initials
          FROM league_scores s JOIN players p ON p.id = s.id
          WHERE s.date = ? ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC`
       ).bind(date).all());
@@ -574,7 +574,7 @@ async function serveLeague(url, request, env, path) {
           max: r.max,
           display: r.display,
           ms: r.ms,
-          ...(mode === "all" ? { date: r.date } : {}),
+          ...(mode === "all" ? { date: r.date } : { at: r.at || null }),
         });
     }
     if (askMe) for (const g in meGames) meGames[g].total = ranks[g] || 0;
