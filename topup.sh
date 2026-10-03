@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ROUNDS="${1:-12}"
-URL="https://groupie.fun"
+URL="https://groupie.carlosfandango.net"
 
 [ -f .admin-token ] || { echo "No .admin-token file — run setup-deploy.sh first."; exit 1; }
 

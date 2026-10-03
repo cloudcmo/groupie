@@ -5,10 +5,19 @@
 import { generateDay } from "./generate.js";
 import { handleSubscribe } from "./subscribe.js";
 
+import { MOVE, movedResponse } from "./moved.js";
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Old domain (groupie.fun): PAGE loads get the hand-off to the new address,
+    // carrying localStorage with them. API calls (fetch, OPTIONS) are untouched,
+    // so the docket/league/visit callers on groupie.fun keep working until they
+    // are re-pointed. See src/moved.js.
+    const moved = movedResponse(request, url, MOVE);
+    if (moved) return moved;
 
     try {
       if (path === "/api/puzzle") return await servePuzzle(url, env, request);
@@ -31,7 +40,9 @@ export default {
       return json({ error: "Internal error" }, 500);
     }
 
-    return json({ error: "Not found" }, 404);
+    if (path.startsWith("/api/")) return json({ error: "Not found" }, 404);
+    // run_worker_first is on (wrangler.toml), so static files come through here.
+    return env.ASSETS.fetch(request);
   },
 
   // Daily cron: top the queue back up to TOPUP_TARGET_DAYS, then check

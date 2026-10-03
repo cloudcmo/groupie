@@ -5,5 +5,5 @@ cd "$(dirname "$0")"
 npx wrangler deploy
 echo ""
 echo "Deployed. Health:"
-curl -s "https://groupie.fun/api/health" || true
+curl -s "https://groupie.carlosfandango.net/api/health" || true
 echo ""
