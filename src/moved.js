@@ -11,7 +11,7 @@
    on the date in the consolidation plan (Thu 12 Nov 2026), then redeploy. */
 
 export const MOVE = {
-  oldHosts: ["groupie.fun", "www.groupie.fun"],
+  oldHosts: ["groupie.fun", "www.groupie.fun", "groupie.carl-b82.workers.dev"],
   newOrigin: "https://groupie.carlosfandango.net",
   gameName: "Groupie",
   phase: "silent",
