@@ -532,6 +532,47 @@ async function serveLeague(url, request, env, path) {
     return docketJson({ ok: true, initials: p ? p.initials : null, stored, record, existing });
   }
 
+  // GET /api/league/me?id= → everything the "My stats" page needs (5 Oct 2026).
+  // The player is whoever holds this id's initials: a person on two devices, or
+  // before and after clearing a browser, ends up with several ids under the same
+  // three letters, and their history should follow them. Each row carries the
+  // day's position (same order as the today table) and how many were on it.
+  // The page does the sums; this just hands over the rows.
+  if (path === "/api/league/me" && request.method === "GET") {
+    const id = url.searchParams.get("id") || "";
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+    if (!p) return docketJson({ initials: null, rows: [], avg: {} });
+    const { results: raw } = await env.DB.prepare(
+      `WITH r AS (
+         SELECT s.date AS d, s.game AS g, s.score AS s, s.max AS m, s.display AS disp,
+                s.ms, s.at, s.rowid AS rid, pl.initials AS ini,
+                ROW_NUMBER() OVER (PARTITION BY s.date, s.game
+                  ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC) AS rk,
+                COUNT(*) OVER (PARTITION BY s.date, s.game) AS n
+         FROM league_scores s JOIN players pl ON pl.id = s.id
+       )
+       SELECT d, g, s, m, disp, ms, at, rk, n, rid FROM r WHERE ini = ? ORDER BY d ASC, rid ASC`
+    ).bind(p.initials).all();
+    // Two of your ids on the same game on the same day: the first one filed counts.
+    const seen = new Set();
+    const rows = [];
+    for (const r of raw || []) {
+      const k = r.d + "|" + r.g;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      delete r.rid;
+      rows.push(r);
+    }
+    const { results: av } = await env.DB.prepare(
+      `SELECT s.game AS g, AVG(s.score) AS a, COUNT(*) AS n
+       FROM league_scores s JOIN players pl ON pl.id = s.id GROUP BY s.game`
+    ).all();
+    const avg = {};
+    for (const a of av || []) avg[a.g] = { a: Math.round(a.a * 10) / 10, n: a.n };
+    return docketJson({ initials: p.initials, today, rows, avg });
+  }
+
   // GET /api/league?date=&mode=today|all → the tables
   if (path === "/api/league" && request.method === "GET") {
     const mode = url.searchParams.get("mode") === "all" ? "all" : "today";
