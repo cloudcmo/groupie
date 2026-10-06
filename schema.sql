@@ -94,3 +94,16 @@ CREATE TABLE IF NOT EXISTS pin_tries (
   at       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pin_tries ON pin_tries(initials, at);
+
+-- Replays (6 Oct 2026; see migrations/2026-10-06-league-replays.sql): the move
+-- log a game sends with its league score, so the all-time greats can be watched
+-- back. One per score row, kept only when the score itself is stored (first
+-- score of the day counts). `data` is the game's own JSON, at most 32 KB.
+CREATE TABLE IF NOT EXISTS league_replays (
+  id   TEXT NOT NULL,
+  date TEXT NOT NULL,
+  game TEXT NOT NULL,
+  data TEXT NOT NULL,
+  at   TEXT NOT NULL,
+  PRIMARY KEY (id, date, game)
+);

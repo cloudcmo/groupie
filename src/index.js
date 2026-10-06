@@ -587,6 +587,18 @@ async function serveLeague(url, request, env, path) {
        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     ).bind(id, date, game, score, max, display, ms).run();
     const stored = !!(ins && ins.meta && ins.meta.changes);
+    // The replay rides along with the score (6 Oct 2026) and is kept only when
+    // the score is: the first score of the day is the one that can be watched.
+    // A game's own JSON, opaque here, 32 KB at most. Never fails the score.
+    if (stored && body.replay && typeof body.replay === "object") {
+      try {
+        const data = JSON.stringify(body.replay);
+        if (data.length <= 32768)
+          await env.DB.prepare(
+            "INSERT OR IGNORE INTO league_replays (id, date, game, data, at) VALUES (?, ?, ?, ?, datetime('now'))"
+          ).bind(id, date, game, data).run();
+      } catch (e) {}
+    }
     const beats = score > (prior?.best || 0) ||
       (ms !== null && score === prior?.best && (fastestAtBest === null || ms < fastestAtBest));
     const record = stored && score > 0 && (prior?.n || 0) >= RECORD_MIN_SCORES && beats;
@@ -643,6 +655,30 @@ async function serveLeague(url, request, env, path) {
     return docketJson({ initials: p.initials, today, rows, avg });
   }
 
+  // GET /api/league/replay?game=&date=&ini= → a score's replay, for the game's
+  // watch mode (6 Oct 2026). The league names a score by its initials and day,
+  // never by the anonymous id. Two ids under the same initials on the same day:
+  // the higher score, which is the one the table shows.
+  if (path === "/api/league/replay" && request.method === "GET") {
+    const game = url.searchParams.get("game") || "";
+    const date = url.searchParams.get("date") || "";
+    const ini = String(url.searchParams.get("ini") || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+    if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
+    if (ini.length !== 3) return docketJson({ error: "Bad initials" }, 400);
+    const row = await env.DB.prepare(
+      `SELECT s.score, s.display, s.ms, r.data
+       FROM league_scores s JOIN players p ON p.id = s.id
+       JOIN league_replays r ON r.id = s.id AND r.date = s.date AND r.game = s.game
+       WHERE s.game = ? AND s.date = ? AND p.initials = ?
+       ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC LIMIT 1`
+    ).bind(game, date, ini).first();
+    if (!row) return docketJson({ error: "No replay for that score" }, 404);
+    let replay = null;
+    try { replay = JSON.parse(row.data); } catch (e) {}
+    return docketJson({ game, date, initials: ini, score: row.score, display: row.display, ms: row.ms, replay });
+  }
+
   // GET /api/league?date=&mode=today|all → the tables
   if (path === "/api/league" && request.method === "GET") {
     const mode = url.searchParams.get("mode") === "all" ? "all" : "today";
@@ -652,7 +688,9 @@ async function serveLeague(url, request, env, path) {
     let rows;
     if (mode === "today") {
       ({ results: rows } = await env.DB.prepare(
-        `SELECT s.id, s.game, s.score, s.max, s.display, s.ms, s.at, p.initials
+        `SELECT s.id, s.game, s.score, s.max, s.display, s.ms, s.at, p.initials,
+                EXISTS (SELECT 1 FROM league_replays r
+                        WHERE r.id = s.id AND r.date = s.date AND r.game = s.game) AS rp
          FROM league_scores s JOIN players p ON p.id = s.id
          WHERE s.date = ? ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC`
       ).bind(date).all());
@@ -663,7 +701,9 @@ async function serveLeague(url, request, env, path) {
       // Since 30 Sept 2026 time breaks a tie before the date does: timed above
       // untimed, fastest first (so 24/24 with no time sits below 24/24 with one).
       ({ results: rows } = await env.DB.prepare(
-        `SELECT s.game, s.score, s.max, s.display, s.ms, p.initials, s.date
+        `SELECT s.game, s.score, s.max, s.display, s.ms, p.initials, s.date,
+                EXISTS (SELECT 1 FROM league_replays r
+                        WHERE r.id = s.id AND r.date = s.date AND r.game = s.game) AS rp
          FROM league_scores s JOIN players p ON p.id = s.id
          WHERE s.score > 0 AND s.rowid IN (
            SELECT rowid FROM (
@@ -696,6 +736,8 @@ async function serveLeague(url, request, env, path) {
           max: r.max,
           display: r.display,
           ms: r.ms,
+          // a replay to watch (6 Oct 2026): ?watch= on the game, see /api/league/replay
+          ...(r.rp ? { replay: 1 } : {}),
           ...(mode === "all" ? { date: r.date } : { at: r.at || null }),
         });
     }
