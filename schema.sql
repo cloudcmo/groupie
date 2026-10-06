@@ -79,3 +79,18 @@ CREATE TABLE IF NOT EXISTS league_scores (
 );
 
 CREATE INDEX IF NOT EXISTS idx_league_date ON league_scores(date, game, score);
+
+-- One PIN per set of initials for every Guff game (6 Oct 2026; see migrations/2026-10-06-cabinet-pins.sql).
+CREATE TABLE IF NOT EXISTS cabinet (
+  initials TEXT PRIMARY KEY,      -- AAA
+  pin_hash TEXT NOT NULL,         -- sha256(salt:initials:pin)
+  salt     TEXT NOT NULL,
+  created  TEXT NOT NULL,
+  updated  TEXT NOT NULL
+);
+-- Wrong PIN attempts, so four digits can't be guessed: five an hour per initials.
+CREATE TABLE IF NOT EXISTS pin_tries (
+  initials TEXT NOT NULL,
+  at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pin_tries ON pin_tries(initials, at);

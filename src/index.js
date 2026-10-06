@@ -431,6 +431,36 @@ async function serveSitemap(url, env) {
 // the docket uses. Every game reports its daily score here; the league page
 // on the guff hub reads the tables. Cross-origin by design, same as the
 // docket. No accounts — three letters and glory.
+//
+// PINs (6 Oct 2026): one four-digit PIN per set of initials, shared by every
+// Guff game, Ducks included. Initials with no PIN behave exactly as before.
+// Once someone locks them (POST /api/league/lock, from a browser that holds
+// them), signing them on any other browser needs the PIN. Five wrong PINs an
+// hour per initials, then a wait. Forgotten PIN: delete the cabinet row.
+
+const PIN_TRIES_PER_HOUR = 5;
+async function sha256hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+const validPin = (pin) => /^\d{4}$/.test(pin);
+async function cabinetRow(env, initials) {
+  return env.DB.prepare("SELECT initials, pin_hash, salt FROM cabinet WHERE initials = ?").bind(initials).first();
+}
+/** Check a PIN against locked initials: "ok", "wrong" or "wait" (too many wrong ones this hour). */
+async function checkPin(env, row, pin) {
+  const since = new Date(Date.now() - 3600e3).toISOString();
+  const t = await env.DB.prepare("SELECT COUNT(*) AS n FROM pin_tries WHERE initials = ? AND at > ?").bind(row.initials, since).first();
+  if ((t?.n || 0) >= PIN_TRIES_PER_HOUR) return "wait";
+  if (validPin(pin) && (await sha256hex(`${row.salt}:${row.initials}:${pin}`)) === row.pin_hash) return "ok";
+  await env.DB.prepare("INSERT INTO pin_tries (initials, at) VALUES (?, ?)").bind(row.initials, new Date().toISOString()).run();
+  return "wrong";
+}
+const PIN_SAYS = {
+  need: (ini) => `${ini} is locked with a PIN. What's yours?`,
+  wrong: () => "That's not the PIN. Try again.",
+  wait: () => "Too many wrong PINs. Try again in an hour.",
+};
 
 const INITIALS_BLOCKLIST = new Set([
   "ASS", "FUK", "FUC", "FCK", "SHT", "CNT", "DIK", "COK", "FAG", "NIG",
@@ -447,7 +477,36 @@ async function serveLeague(url, request, env, path) {
     const id = url.searchParams.get("id") || "";
     if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
     const row = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
-    return docketJson(row ? { initials: row.initials } : {});
+    if (!row) return docketJson({});
+    const lock = await cabinetRow(env, row.initials);
+    return docketJson({ initials: row.initials, locked: !!lock });
+  }
+
+  // POST /api/league/lock { id, pin, old? } → lock the initials this id holds with a PIN,
+  // or change the PIN (old needed). The first browser to lock a set of initials owns them.
+  if (path === "/api/league/lock" && request.method === "POST") {
+    let body = {};
+    try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+    const id = String(body.id || ""), pin = String(body.pin || "");
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    if (!validPin(pin)) return docketJson({ error: "Four numbers, please." }, 400);
+    const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+    if (!p) return docketJson({ error: "Sign your initials first." }, 400);
+    const lock = await cabinetRow(env, p.initials);
+    const now = new Date().toISOString();
+    const salt = crypto.randomUUID();
+    const hash = await sha256hex(`${salt}:${p.initials}:${pin}`);
+    if (lock) {
+      if (body.old === undefined) return docketJson({ error: `${p.initials} already has a PIN.`, locked: true }, 409);
+      const c = await checkPin(env, lock, String(body.old));
+      if (c !== "ok") return docketJson({ error: PIN_SAYS[c](), wrong: c === "wrong" }, c === "wait" ? 429 : 403);
+      await env.DB.prepare("UPDATE cabinet SET pin_hash = ?, salt = ?, updated = ? WHERE initials = ?").bind(hash, salt, now, p.initials).run();
+      return docketJson({ ok: true, initials: p.initials, locked: true, changed: true });
+    }
+    // INSERT OR IGNORE: two browsers locking the same initials at once, the first one wins
+    const ins = await env.DB.prepare("INSERT OR IGNORE INTO cabinet (initials, pin_hash, salt, created, updated) VALUES (?, ?, ?, ?, ?)").bind(p.initials, hash, salt, now, now).run();
+    if (!ins.meta?.changes) return docketJson({ error: `${p.initials} already has a PIN.`, locked: true }, 409);
+    return docketJson({ ok: true, initials: p.initials, locked: true });
   }
 
   // POST /api/league/initials { id, initials }
@@ -461,11 +520,22 @@ async function serveLeague(url, request, env, path) {
       return docketJson({ error: "Three letters. It is the arcade way." }, 400);
     if (INITIALS_BLOCKLIST.has(initials))
       return docketJson({ error: "The arcade cabinet refuses those letters." }, 400);
+    // Locked initials need the PIN, unless this browser already holds them.
+    const lock = await cabinetRow(env, initials);
+    if (lock) {
+      const held = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+      if (!held || held.initials !== initials) {
+        if (body.pin === undefined || body.pin === null || body.pin === "")
+          return docketJson({ error: PIN_SAYS.need(initials), needPin: true, initials }, 403);
+        const c = await checkPin(env, lock, String(body.pin));
+        if (c !== "ok") return docketJson({ error: PIN_SAYS[c](), needPin: true, wrong: c === "wrong", initials }, c === "wait" ? 429 : 403);
+      }
+    }
     await env.DB.prepare(
       `INSERT INTO players (id, initials, created) VALUES (?, ?, datetime('now'))
        ON CONFLICT(id) DO UPDATE SET initials = excluded.initials`
     ).bind(id, initials).run();
-    return docketJson({ ok: true, initials });
+    return docketJson({ ok: true, initials, locked: !!lock });
   }
 
   // POST /api/league/score { id, date, game, score, max, display, ms? }
