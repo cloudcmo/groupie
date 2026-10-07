@@ -1,6 +1,7 @@
 /* Groupie: arcade visitors (7 Oct 2026). Pure whimsy. If you leave the board alone for 20 seconds, a little
-   pixel creature crawls across the screen, sometimes stops to say something, and leaves. At most twice per
-   grid, so it never gets annoying. All sprites are original to Groupie; GuffBot himself turns up now and then.
+   pixel creature crawls across the screen, sometimes loiters a moment, and leaves, or gets chased. At most twice per
+   grid, so it never gets annoying. All the creatures are original to Groupie (a robot, a cyclops, a teapot, a walking pint, a sheep, a hedgehog, a duck, a UFO...);
+   GuffBot himself turns up now and then.
    Nothing here touches the game: it sits on top, ignores taps, and only runs while a grid is in play.
    Off for anyone who prefers reduced motion. Add ?arcadetest to the address to see one every few seconds. */
 (() => {
@@ -24,9 +25,36 @@
       ["....y....", "..aaaaa..", "..awawa..", "..aaaaa..", ".bbbbbbb.", "bbbbybbbb", ".bbbbbbb.", ".bb...bb."],
       ["....y....", "..aaaaa..", "..awawa..", "..aaaaa..", ".bbbbbbb.", "bbbbybbbb", ".bbbbbbb.", "..bb.bb.."],
     ] },
-    bug: { lane: "ground", frames: [
-      ["k.......k", ".k.....k.", "..aaaaa..", ".aawawaa.", "aaaaaaaaa", "a.a...a.a"],
-      ["k.......k", ".k.....k.", "..aaaaa..", ".aawawaa.", "aaaaaaaaa", ".a.a.a.a."],
+    teapot: { lane: "ground", frames: [
+      ["....b....", "..aaaaa..", "baakaakab", "b.aaaaa.b", "..aaaaa..", "..b...b.."],
+      ["....b....", "..aaaaa..", "baakaakab", "b.aaaaa.b", "..aaaaa..", "...b.b..."],
+    ] },
+    pint: { lane: "ground", frames: [
+      ["wwwwwww", ".wwwww.", ".ykyky.", ".yyyyy.", ".yyyyy.", ".yyyyy.", ".yyyyy.", ".b...b."],
+      ["wwwwwww", ".wwwww.", ".ykyky.", ".yyyyy.", ".yyyyy.", ".yyyyy.", ".yyyyy.", "..b.b.."],
+    ], fixed: true },
+    sheep: { lane: "ground", frames: [
+      ["..www....", ".wwwwwbb.", "wwwwwwwb.", ".wwwwww..", "..b..b..."],
+      ["..www....", ".wwwwwbb.", "wwwwwwwb.", ".wwwwww..", "...b.b..."],
+    ], fixed: true },
+    hedgehog: { lane: "ground", frames: [
+      ["..a.a.a.a.", ".aaaaaaaa.", "aaaaaaaaak", ".aaaaaaaa.", "..b..b...."],
+      ["..a.a.a.a.", ".aaaaaaaa.", "aaaaaaaaak", ".aaaaaaaa.", "...b..b..."],
+    ], fixed: true, brown: true },
+    duck: { lane: "ground", frames: [
+      ["..yyy....", ".yykyoo..", "..yyy....", ".yyyyyy..", "yyyyyyyy.", ".yyyyyy..", "..o..o..."],
+      ["..yyy....", ".yykyoo..", "..yyy....", ".yyyyyy..", "yyyyyyyy.", ".yyyyyy..", "...o.o..."],
+    ], fixed: true },
+    jelly: { lane: "ground", frames: [
+      ["..aaaaa..", ".aaaaaaa.", "aawkawkaa", "aaaaaaaaa", ".aaaaaaa.", ".a.a.a.a.", "a.a.a.a.a"],
+      ["..aaaaa..", ".aaaaaaa.", "aawkawkaa", "aaaaaaaaa", ".aaaaaaa.", "a.a.a.a.a", ".a.a.a.a."],
+    ] },
+    ball: { lane: "ground", hop: true, frames: [
+      ["..aaa..", ".aaaaa.", "aawaawa", "aakaaka", "aaaaaaa", ".aaaaa.", "..aaa.."],
+    ] },
+    rocket: { lane: "air", frames: [
+      ["...bbbb....", "oaaaaaaaaab", "oaaaawwaaab", "oaaaaaaaaab", "...bbbb...."],
+      ["...bbbb....", ".aaaaaaaaab", ".aaaawwaaab", ".aaaaaaaaab", "...bbbb...."],
     ] },
     ufo: { lane: "air", frames: [
       ["....bbb....", "...bwwwb...", ".aaaaaaaaa.", "aayaayaayaa", ".aaaaaaaaa.", "..a.....a.."],
@@ -34,13 +62,7 @@
     ] },
   };
   const COLOURS = ["#ff9f1c", "#b6ff33", "#00ffd5", "#ff3b4e", "#ff2bd6", "#00f0ff"];
-  const SECOND = { b: "#8fa3b0", y: "#ffe94d", w: "#ffffff", k: "#05060d" };
-
-  const SAYS = [
-    "INSERT COIN", "HI SCORE?", "READY PLAYER 1", "STILL THERE?", "FIRE AT WILL",
-    "PLEASE INSERT BRAIN", "ONE MORE GO?", "TICK TOCK", "GAME ON", "BEEP BOOP",
-  ];
-  const BOT_SAYS = ["GUFFBOT WAS HERE", "PSST. TRY THE EASY ONE LAST", "CARRY ON", "I SEE EVERYTHING"];
+  const SECOND = { b: "#8fa3b0", y: "#ffe94d", w: "#ffffff", k: "#05060d", o: "#ff8a1f" };
 
   function spriteEl(def, colour, px) {
     const w = def.frames[0][0].length, h = def.frames[0].length;
@@ -50,6 +72,7 @@
     svg.setAttribute("width", w * px); svg.setAttribute("height", h * px);
     svg.setAttribute("shape-rendering", "crispEdges");
     const pal = { a: colour, ...SECOND };
+    if (def.brown) pal.a = "#9a6a3a";
     const groups = def.frames.map((rows) => {
       const g = document.createElementNS(ns, "g");
       rows.forEach((row, y) => [...row].forEach((ch, x) => {
@@ -77,21 +100,18 @@
     .arc .bob{animation:arcbob .44s steps(2) infinite}
     @keyframes arcbob{0%{transform:translateY(0)}50%{transform:translateY(-3px)}100%{transform:translateY(0)}}
     .arc.air .bob{animation-duration:.9s}
-    .arc .say{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:6px;white-space:nowrap;
-      font:9px/1 "Press Start 2P",monospace;color:#020308;background:#d8f7ff;padding:6px 7px;border:2px solid #00f0ff;
-      box-shadow:3px 3px 0 #ff2bd6}
-    .arc .say::after{content:"";position:absolute;top:100%;left:50%;margin-left:-4px;border:4px solid transparent;border-top-color:#00f0ff}
+    .arc.hop .bob{animation:archop .7s steps(6) infinite}
+    @keyframes archop{0%,100%{transform:translateY(0)}50%{transform:translateY(-22px)}}
     .arc img{display:block;image-rendering:auto}
   `;
   document.head.append(css);
 
   /* ---------- one visit ---------- */
   let busy = false;
-  async function visit() {
-    busy = true;
+  async function visit(o = {}) {
     const W = window.innerWidth, H = window.innerHeight;
     const px = W < 480 ? 4 : 5;
-    const bot = Math.random() < 0.12;
+    const bot = o.bot !== undefined ? o.bot : Math.random() < 0.12;
     let key, built, lane;
     if (bot) {
       lane = "ground";
@@ -99,11 +119,11 @@
       img.src = "guffbot.webp"; img.alt = ""; img.width = 44; img.height = 44;
       built = { svg: img, w: 44, h: 44, stop() {} };
     } else {
-      key = pick(Object.keys(SPRITES)); lane = SPRITES[key].lane;
+      key = o.key || pick(Object.keys(SPRITES)); lane = SPRITES[key].lane;
       built = spriteEl(SPRITES[key], pick(COLOURS), px);
     }
     const el = document.createElement("div");
-    el.className = "arc " + lane;
+    el.className = "arc " + lane + (key && SPRITES[key].hop ? " hop" : "");
     const flip = document.createElement("span"), bob = document.createElement("span");
     flip.className = "flip"; bob.className = "bob"; bob.style.display = "block";
     bob.append(built.svg); flip.append(bob); el.append(flip);
@@ -111,7 +131,7 @@
     if (lane !== "air") el.style.bottom = `${Math.round(R(8, 26))}px`;
     document.body.append(el);
 
-    const dir = Math.random() < 0.5 ? 1 : -1;           // 1 = left to right
+    const dir = o.dir || (Math.random() < 0.5 ? 1 : -1);   // 1 = left to right
     if (dir < 0) flip.classList.add("l");
     const startX = dir > 0 ? -built.w - 10 : W + 10;
     const endX = dir > 0 ? W + 10 : -built.w - 10;
@@ -122,22 +142,37 @@
       { duration: ms, easing: stepped(b - a), fill: "forwards" }).finished.catch(() => {});
 
     el.style.transform = `translateX(${startX}px)`;
-    const speak = (t) => { const s = document.createElement("div"); s.className = "say"; s.textContent = t; el.append(s); return s; };
     try {
-      if (Math.random() < 0.5) {
-        // a peek: walk in a little way, say something, and go back out the way it came
+      if (!o.crossing && Math.random() < 0.5) {
+        // a peek: walk in a little way, loiter, and go back out the way it came
         const stopX = dir > 0 ? R(0.1, 0.4) * W : W - built.w - R(0.1, 0.4) * W;
         await slide(startX, stopX, Math.abs(stopX - startX) * 14);
-        const s = speak(bot ? pick(BOT_SAYS) : pick(SAYS));
-        await sleep(2200); s.remove();
+        await sleep(R(900, 1800));
         flip.classList.toggle("l");
         await slide(stopX, startX, Math.abs(stopX - startX) * 11);
       } else {
         // a crossing: the whole width of the screen, no stopping
-        await slide(startX, endX, (W + built.w) * R(9, 13));
+        await slide(startX, endX, (W + built.w) * (o.speed || R(9, 13)));
       }
     } catch {}
     built.stop(); el.remove();
+  }
+  // a visit: usually one creature; sometimes a chase (a small one pelted across the screen, a big one after it)
+  async function turnUp() {
+    busy = true;
+    try {
+      if (Math.random() < 0.25) {
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        const runner = pick(["duck", "hedgehog", "pint", "sheep", "ball", "jelly"]);
+        const chaser = pick(["cyclops", "robot", "teapot", "jelly"]);
+        await Promise.all([
+          visit({ key: runner, dir, crossing: true, bot: false, speed: 8 }),
+          sleep(900).then(() => visit({ key: chaser, dir, crossing: true, bot: false, speed: 7 })),
+        ]);
+      } else {
+        await visit();
+      }
+    } catch {}
     busy = false;
   }
 
@@ -162,6 +197,6 @@
     if (!test && shown(k) >= MAX_PER_GAME) return;
     if (!test) bump(k);
     touch();
-    visit().then(touch);
+    turnUp().then(touch);
   }, 1000);
 })();
