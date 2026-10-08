@@ -35,9 +35,10 @@ RESEND_SEGMENT_ID = "90610922-0511-40a1-a3d1-2c645d992210"
 ALERT_EMAIL = "carl@mesnerlyons.com"
 
 [triggers]
-# Morning run (06:25 UTC) tops the queue up to TOPUP_TARGET_DAYS; the
-# evening run (18:25 UTC) is the self-healing second chance — it does
-# nothing (and costs nothing) when the queue is full, but recovers a bad
-# morning the same day instead of waiting for a human.
+# Morning run (06:25 UTC) tops the queue up to TOPUP_TARGET_DAYS.
+# The 18:25 self-healing second run was dropped on 8 Oct 2026 to free one
+# of the account's five free cron slots for the client-files-worker survey
+# reminders: with a 45-day queue and the low-water alert below, one bad
+# morning is recovered the next day with nothing lost.
 # (Offset from What Word's 06:15 so the crons never contend.)
-crons = ["25 6 * * *", "25 18 * * *"]
+crons = ["25 6 * * *"]
