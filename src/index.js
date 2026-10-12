@@ -26,6 +26,7 @@ export default {
       if (path === "/api/played") return await servePlayed(request, env);
       if (path === "/api/stats") return await serveStats(url, env, request);
       if (path === "/api/docket") return await serveDocket(url, request, env);
+      if (path === "/api/prefs") return await servePrefs(url, request, env);
       if (path === "/api/visit") return await serveVisit(request, env);
       if (path === "/api/sources") return await serveSources(url, request, env);
       if (path.startsWith("/api/league")) return await serveLeague(url, request, env, path);
@@ -282,6 +283,78 @@ async function serveSources(url, request, env) {
     status: 200,
     headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60", ...DOCKET_CORS },
   });
+}
+
+// ─── Each player's games and order (12 Oct 2026) ────────────────────────────
+// Which of the daily games a player wants suggested, and in what order. Set on
+// the hub (hub.carlosfandango.net, "Edit my games"), read by the hub and every
+// game's guff bar, so it has to live here rather than in one site's storage.
+// Saved against the browser's id, and also against the player's initials when
+// they have signed, so it follows them to a new phone. Nothing else is stored.
+//   order: every game key the player has seen, in their order
+//   off:   the ones they switched off (not suggested; still playable)
+//   known: the games that existed when they saved, so a game launched later
+//          can switch itself on for everyone once
+// GET  /api/prefs?id=           → { prefs: {order, off, known, at} | null }
+// POST /api/prefs {id, order, off, known} → { ok: true }
+let prefsTableReady = false;
+async function ensurePrefsTable(env) {
+  if (prefsTableReady) return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS guff_prefs (k TEXT PRIMARY KEY, prefs TEXT NOT NULL, at TEXT NOT NULL)"
+  ).run();
+  prefsTableReady = true;
+}
+function cleanKeys(list, max) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const k of list) {
+    if (typeof k === "string" && DOCKET_GAMES.has(k) && k !== "twentee" && !out.includes(k)) out.push(k);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+async function servePrefs(url, request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+  await ensurePrefsTable(env);
+
+  if (request.method === "GET") {
+    const id = url.searchParams.get("id") || "";
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+    const keys = ["id:" + id];
+    if (p && p.initials) keys.push("ini:" + p.initials);
+    const { results } = await env.DB.prepare(
+      "SELECT prefs, at FROM guff_prefs WHERE k IN (" + keys.map(() => "?").join(",") + ") ORDER BY at DESC LIMIT 1"
+    ).bind(...keys).all();
+    const row = results && results[0];
+    if (!row) return docketJson({ prefs: null });
+    let prefs = null;
+    try { prefs = JSON.parse(row.prefs); } catch { prefs = null; }
+    if (prefs) prefs.at = row.at;
+    return docketJson({ prefs });
+  }
+
+  if (request.method === "POST") {
+    let body = {};
+    try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+    const id = typeof body.id === "string" ? body.id : "";
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    const prefs = { order: cleanKeys(body.order, 30), off: cleanKeys(body.off, 30), known: cleanKeys(body.known, 30) };
+    const at = new Date().toISOString();
+    const text = JSON.stringify(prefs);
+    const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+    const stmts = [env.DB.prepare(
+      "INSERT INTO guff_prefs (k, prefs, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET prefs = excluded.prefs, at = excluded.at"
+    ).bind("id:" + id, text, at)];
+    if (p && p.initials) stmts.push(env.DB.prepare(
+      "INSERT INTO guff_prefs (k, prefs, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET prefs = excluded.prefs, at = excluded.at"
+    ).bind("ini:" + p.initials, text, at));
+    await env.DB.batch(stmts);
+    return docketJson({ ok: true, at });
+  }
+
+  return docketJson({ error: "Not found" }, 404);
 }
 
 function validDocketId(id) {

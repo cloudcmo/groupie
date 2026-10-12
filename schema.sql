@@ -107,3 +107,10 @@ CREATE TABLE IF NOT EXISTS league_replays (
   at   TEXT NOT NULL,
   PRIMARY KEY (id, date, game)
 );
+
+-- Each player's chosen games and order (12 Oct 2026). See migrations/2026-10-12-guff-prefs.sql.
+CREATE TABLE IF NOT EXISTS guff_prefs (
+  k     TEXT PRIMARY KEY,
+  prefs TEXT NOT NULL,
+  at    TEXT NOT NULL
+);
