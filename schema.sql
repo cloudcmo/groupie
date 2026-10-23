@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS docket (
   wagdaily INTEGER NOT NULL DEFAULT 0,   -- Words and Guff Daily, added 20 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
   wordminer INTEGER NOT NULL DEFAULT 0,  -- Wordminer, added 25 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
   guffitaire INTEGER NOT NULL DEFAULT 0, -- Guffitaire, added 25 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
+  helmet INTEGER NOT NULL DEFAULT 0,     -- Helmet, added 16 Oct 2026 (live: ALTER TABLE docket ADD COLUMN)
   PRIMARY KEY (id, date)
 );
 
@@ -113,4 +114,16 @@ CREATE TABLE IF NOT EXISTS guff_prefs (
   k     TEXT PRIMARY KEY,
   prefs TEXT NOT NULL,
   at    TEXT NOT NULL
+);
+
+-- Claude-written candidate grids waiting to be filed by the morning cron
+-- (added 23 Oct 2026, replacing the Anthropic API generator).
+CREATE TABLE IF NOT EXISTS pending (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,             -- YYYY-MM-DD the candidate is for
+  candidate TEXT NOT NULL,        -- JSON: { groups, wordplay, trap, verified: true }
+  status TEXT NOT NULL DEFAULT 'new',  -- new | filed | rejected | skipped
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  filed_at TEXT
 );

@@ -2,7 +2,7 @@
 // Static assets in public/ are served by Cloudflare's asset handling;
 // this Worker only sees /api/* (and anything assets don't match).
 
-import { generateDay } from "./generate.js";
+import { validateDay } from "./generate.js";
 import { handleSubscribe } from "./subscribe.js";
 
 import { MOVE, movedResponse } from "./moved.js";
@@ -46,11 +46,10 @@ export default {
     return env.ASSETS.fetch(request);
   },
 
-  // Daily cron: top the queue back up to TOPUP_TARGET_DAYS, then check
-  // the water level and email an alert if it's running low.
+  // Daily cron: housekeeping, then file the Claude-written grids waiting in
+  // `pending`; email only if the queue is low or candidates were turned away.
   async scheduled(event, env, ctx) {
-    const target = parseInt(env.TOPUP_TARGET_DAYS || "45", 10);
-    ctx.waitUntil(runScheduled(env, target));
+    ctx.waitUntil(runScheduled(env));
   },
 };
 
@@ -121,7 +120,7 @@ async function serveHealth(env) {
 // wagdaily (Words and Guff Daily) took Twentee's place on 20 Sept 2026. twentee stays accepted
 // so its column and old rows keep working; its page stops reporting once the bar drops it.
 // wordminer and guffitaire joined the canon on 25 Sept 2026 (Guff games nine and ten).
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire"]);
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet"]);
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -142,7 +141,7 @@ async function serveDocket(url, request, env) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -166,7 +165,7 @@ async function serveDocket(url, request, env) {
     ).bind(id, date).run();
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -374,6 +373,7 @@ function docketPlayed(row) {
     wagdaily: !!row?.wagdaily,
     wordminer: !!row?.wordminer,
     guffitaire: !!row?.guffitaire,
+    helmet: !!row?.helmet,
   };
 }
 
@@ -449,22 +449,11 @@ async function serveStats(url, env, request) {
   }, 200, 0);
 }
 
+// Retired 23 Oct 2026: the site no longer calls the Anthropic API. Grids
+// are written weekly by a Claude scheduled task (on Carl's subscription),
+// put into the `pending` table, and filed by the morning cron below.
 async function serveGenerate(request, env) {
-  if (request.method !== "POST") return json({ error: "POST only" }, 405);
-  const auth = request.headers.get("Authorization") || "";
-  if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`)
-    return json({ error: "Unauthorized" }, 401);
-
-  let body = {};
-  try {
-    body = await request.json();
-  } catch {}
-  const days = Math.min(Math.max(parseInt(body.days || "7", 10), 1), 60);
-
-  // One generation per HTTP request: a day now costs two model calls, and
-  // Cloudflare's edge cuts long requests off. The topup script loops instead.
-  const report = await fillRange(env, todayISO(), days, 1);
-  return json(report, 200, 0);
+  return json({ error: "Generation moved to the weekly Claude top-up. See README." }, 410);
 }
 
 // ─── SEO ────────────────────────────────────────────────────────────────────
@@ -825,69 +814,116 @@ async function serveLeague(url, request, env, path) {
   return docketJson({ error: "Not found" }, 404);
 }
 
-// ─── Generation plumbing ────────────────────────────────────────────────────
+// ─── Filing Claude-written grids ────────────────────────────────────────────
+// Since 23 Oct 2026 nothing here calls the Anthropic API. Today the Claude
+// scheduled task "Groupie weekly grids" (Wednesdays, Carl's subscription)
+// writes finished grids straight into `days`, so this path is idle. It is
+// kept so a task CAN hand grids in for machine-checking instead: it sets
+// candidate grids, has each one
+// fact-checked by a separate pass (the old VERIFY_PROMPT in generate.js),
+// and writes the survivors into the `pending` table:
+//   pending(id, date, candidate JSON, status new|filed|rejected|skipped,
+//           reason, created_at, filed_at)
+// `candidate` has the same shape the old setter call returned, plus
+// "verified": true once the fact-check passed:
+//   { "groups": [...4...], "wordplay": {...}, "trap": "...", "verified": true }
+// Every morning the cron files them, running EXACTLY the same machine checks
+// the old generator ran (validateDay in generate.js) against the live
+// category list and recent grids. The first candidate for a date that passes
+// is published; later ones for that date are marked skipped.
 
-// Fill every missing date in [start, start + days). Rejected days are
-// skipped, not retried — run again to fill the gaps.
-// Scans `days` dates from `start` and fills the missing ones, attempting at
-// most `maxAttempts` generations (each = 2 model calls) per invocation so no
-// single request outstays Cloudflare's welcome. Skipped dates are simply
-// picked up by the next call.
-async function fillRange(env, start, days, maxAttempts = 1) {
-  const written = [];
+const MAX_FILE_PER_RUN = 12;
+
+async function filePending(env, today) {
+  const filed = [];
   const rejected = [];
-  let attempts = 0;
+
+  const { results } = await env.DB.prepare(
+    "SELECT id, date, candidate FROM pending WHERE status = 'new' ORDER BY date, id"
+  ).all();
+  if (!results || !results.length) return { filed, rejected };
 
   const usedCategories = await loadUsedCategories(env);
   const recentGroups = await loadRecentGroups(env);
-  // Within a run, a retried date carries its last rejection back into the
-  // prompt so the setter changes course instead of repeating the mistake.
-  const lastRejection = new Map();
+  const { results: dayRows } = await env.DB.prepare("SELECT date FROM days WHERE date >= ?")
+    .bind(today)
+    .all();
+  const existing = new Set((dayRows || []).map((r) => r.date));
 
-  for (let i = 0; i < days; i++) {
-    if (attempts >= maxAttempts) break;
-    const date = addDays(start, i);
-    const exists = await env.DB.prepare("SELECT 1 FROM days WHERE date = ?")
-      .bind(date)
-      .first();
-    if (exists) continue;
+  const mark = (id, status, reason = null) =>
+    env.DB.prepare(
+      "UPDATE pending SET status = ?, reason = ?, filed_at = datetime('now') WHERE id = ?"
+    ).bind(status, reason, id).run();
 
-    // Up to two goes per date per run: the second attempt is told exactly
-    // why the first was rejected, so it changes course instead of walking
-    // back into the same collision. A stubborn date then yields to the next
-    // rather than eating the whole run.
-    let result = null;
-    while (attempts < maxAttempts) {
-      attempts++;
-      result = await generateDay(env, date, usedCategories, recentGroups, lastRejection.get(date) || null);
-      if (result.ok) break;
-      rejected.push({ date, reason: result.reason });
-      const firstFailureThisRun = !lastRejection.has(date);
-      lastRejection.set(date, result.reason);
-      if (!firstFailureThisRun) break; // second strike — move to the next date
+  for (const row of results) {
+    if (row.date < today) {
+      await mark(row.id, "skipped", "date already passed");
+      continue;
     }
-    if (!result || !result.ok) continue;
+    if (existing.has(row.date)) {
+      await mark(row.id, "skipped", "date already has a grid");
+      continue;
+    }
+    if (filed.length >= MAX_FILE_PER_RUN) break; // next morning picks up the rest
 
-    // One batched write per day — day row plus its categories in a single trip.
-    await env.DB.batch([
-      env.DB.prepare("INSERT INTO days (date, payload) VALUES (?, ?)").bind(
-        date,
-        JSON.stringify(result.payload)
-      ),
-      ...result.categories.map((c) =>
-        env.DB.prepare("INSERT OR IGNORE INTO categories (name, date) VALUES (?, ?)").bind(c, date)
-      ),
-    ]);
-    for (const c of result.categories) usedCategories.add(c);
-    for (const g of result.payload.groups) {
+    let parsed;
+    try {
+      parsed = JSON.parse(row.candidate);
+    } catch {
+      rejected.push({ date: row.date, reason: "candidate is not valid JSON" });
+      await mark(row.id, "rejected", "candidate is not valid JSON");
+      continue;
+    }
+
+    let problem = parsed && parsed.verified === true ? null : "not marked as fact-checked (verified: true)";
+    if (!problem) problem = validateDay(parsed, usedCategories, recentGroups);
+    if (problem) {
+      rejected.push({ date: row.date, reason: problem });
+      await mark(row.id, "rejected", problem);
+      continue;
+    }
+
+    // Normalise exactly as the old generator did: order by difficulty, tidy
+    // whitespace, uppercase tiles.
+    const groups = [...parsed.groups]
+      .sort((a, b) => a.difficulty - b.difficulty)
+      .map((g) => ({
+        name: g.name.trim(),
+        difficulty: g.difficulty,
+        words: g.words.map((w) => w.trim().toUpperCase()),
+      }));
+    const payload = { groups, trap: (parsed.trap || "").trim() };
+    const categories = groups.map((g) => g.name.toLowerCase());
+
+    try {
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO days (date, payload) VALUES (?, ?)").bind(
+          row.date,
+          JSON.stringify(payload)
+        ),
+        ...categories.map((c) =>
+          env.DB.prepare("INSERT OR IGNORE INTO categories (name, date) VALUES (?, ?)").bind(c, row.date)
+        ),
+        env.DB.prepare(
+          "UPDATE pending SET status = 'filed', reason = NULL, filed_at = datetime('now') WHERE id = ?"
+        ).bind(row.id),
+      ]);
+    } catch (err) {
+      rejected.push({ date: row.date, reason: `DB write failed: ${err.message}` });
+      await mark(row.id, "rejected", `DB write failed: ${err.message}`);
+      continue;
+    }
+    for (const c of categories) usedCategories.add(c);
+    for (const g of groups) {
       const set = new Set(g.words);
-      set.fresh = true; // written this run — checkLabels treats it as recent
+      set.fresh = true; // filed this run: checkLabels treats it as recent
       recentGroups.push(set);
     }
-    written.push(date);
+    existing.add(row.date);
+    filed.push(row.date);
   }
 
-  return { written, rejected };
+  return { filed, rejected };
 }
 
 // Word-sets of every published group, so a new day can't re-serve an old
@@ -907,12 +943,8 @@ async function loadRecentGroups(env) {
   return sets;
 }
 
-// Cron entry: make sure there are `target` days queued from today. The
-// posture is self-healing, not alarm-raising: a low queue makes the run
-// work HARDER (more attempts) rather than emailing Carl homework. He gets
-// a receipt when the run recovered a low queue by itself, and an alarm
-// only when the run tried hard and the queue is STILL short — which means
-// something no retry can fix (a dead API key, exhausted credit).
+// Cron entry: housekeeping, then file whatever the weekly top-up left in
+// `pending`. Email only when the queue is low or candidates were turned away.
 const LOW_WATER = 7;
 
 async function queueDepth(env) {
@@ -924,7 +956,7 @@ async function queueDepth(env) {
   return { queued: row?.queued || 0, through: row?.through || null };
 }
 
-async function runScheduled(env, target) {
+async function runScheduled(env) {
   // Prune docket rows older than a fortnight — the bar only ever asks about
   // today, so old rows are pure dead weight.
   await env.DB.prepare("DELETE FROM docket WHERE date < ?")
@@ -935,30 +967,43 @@ async function runScheduled(env, target) {
     .bind(addDays(todayISO(), -60)).run()
     .catch((err) => console.error("Visits prune failed:", err));
 
-  const before = await queueDepth(env);
-
-  // The scheduled context has far roomier limits than an HTTP request, so
-  // the cron may attempt several days per run — and twice as many when the
-  // queue has actually run low.
-  const report = await fillRange(env, todayISO(), target, before.queued < LOW_WATER ? 12 : 6);
+  const report = await filePending(env, todayISO());
+  const after = await queueDepth(env);
   console.log(
-    `Top-up: wrote ${report.written.length}, rejected ${report.rejected.length}`,
+    `Filing: filed ${report.filed.length}, rejected ${report.rejected.length}, queue now ${after.queued}`,
     report.rejected
   );
 
-  const after = await queueDepth(env);
-
   if (after.queued < LOW_WATER) {
-    // Tried hard, still short: a human is genuinely needed.
     await sendLowQueueAlert(env, after.queued, after.through, report.rejected).catch((err) =>
       console.error("Low-queue alert failed:", err)
     );
-  } else if (before.queued < LOW_WATER && report.written.length) {
-    // The queue was low and this run fixed it unaided — send the receipt.
-    await sendTopupReceipt(env, report.written.length, after.queued, after.through).catch((err) =>
-      console.error("Top-up receipt failed:", err)
+  } else if (report.rejected.length) {
+    await sendRejectedNote(env, report.filed.length, after.queued, after.through, report.rejected).catch((err) =>
+      console.error("Rejected note failed:", err)
     );
   }
+}
+
+async function sendRejectedNote(env, filed, queued, through, rejected) {
+  if (!env.RESEND_API_KEY || !env.ALERT_EMAIL) return;
+  const reasons = rejected.slice(0, 8).map((r) => `${r.date}: ${r.reason}`).join("<br>");
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "Groupie <hello@pubquizdaily.com>",
+      to: [env.ALERT_EMAIL],
+      subject: `Groupie turned away ${rejected.length} grid${rejected.length === 1 ? "" : "s"} from the weekly top-up`,
+      html: `<p>No urgent action: this morning filed ${filed} grid${filed === 1 ? "" : "s"} and the
+        queue holds <strong>${queued} day${queued === 1 ? "" : "s"}</strong> (through ${through || "—"}).
+        Some candidates failed the machine checks and were skipped; the next weekly top-up fills the gaps.</p>
+        <p>Rejected:<br>${reasons}</p>`,
+    }),
+  });
 }
 
 async function sendTopupReceipt(env, wrote, queued, through) {
@@ -998,11 +1043,12 @@ async function sendLowQueueAlert(env, queued, through, rejected) {
       from: "Groupie <hello@pubquizdaily.com>",
       to: [env.ALERT_EMAIL],
       subject: `Groupie queue is low: ${queued} day${queued === 1 ? "" : "s"} left`,
-      html: `<p>The daily top-up ran but the grid queue is at <strong>${queued} day${
+      html: `<p>The grid queue is down to <strong>${queued} day${
         queued === 1 ? "" : "s"
       }</strong> (through ${through || "—"}).</p>
-        <p>Recent generation rejections:<br>${reasons}</p>
-        <p>Check /api/health — usually this means the Anthropic key or credit needs attention.</p>`,
+        <p>Grids are written by the Claude scheduled task "Groupie weekly grids" (Wednesdays),
+        so it has probably not run: check it ran, or run it by hand.</p>
+        <p>Rejected candidates this morning:<br>${reasons}</p>`,
     }),
   });
 }
