@@ -92,6 +92,11 @@
   let finished = false;
   let revealed = new Set(); // groups shown after a loss, as opposed to earned
   let toastTimer = null;
+  // For the league's replays (24 Oct 2026): the words of every fire, in order,
+  // with the clock at that moment, plus the grid as first dealt. Sent with the
+  // score; the league's ▶ plays it back here with ?watch=<date>.<INI>.
+  let order = [];           // the sixteen words as first shown
+  let log = [];             // { w: [four words], t: ms on the clock }
 
   // ── Storage ──────────────────────────────────────────────────────────────
 
@@ -109,7 +114,7 @@
     const data = store.read();
     data.results = data.results || {};
     if (data.results[date]) return data; // already recorded — don't double-count
-    data.results[date] = { won, mistakes, rows, score };
+    data.results[date] = { won, mistakes, rows, score, order, log };
 
     data.played = (data.played || 0) + 1;
     if (won) data.wins = (data.wins || 0) + 1;
@@ -145,10 +150,10 @@
   }
 
   function saveProgress() {
-    if (mode === "builtin" || finished || !day) return;
+    if (mode === "builtin" || mode === "watch" || finished || !day) return;
     const data = store.read();
     data.state = data.state || {};
-    data.state[day.date] = { tiles, solved, lives, guesses };
+    data.state[day.date] = { tiles, solved, lives, guesses, order, log };
     store.write(data);
   }
 
@@ -255,6 +260,8 @@
       tiles = [];
       selected = new Set();
       guesses = prior.rows || [];
+      order = prior.order || [];
+      log = prior.log || [];
       lives = LIVES - (prior.mistakes || 0);
       finished = true;
       renderBoard();
@@ -269,12 +276,16 @@
       lives = typeof saved.lives === "number" ? saved.lives : LIVES;
       guesses = saved.guesses || [];
       guessKeys = new Set(guesses.map((g) => g.slice().sort().join("|")));
+      order = saved.order || tiles.slice();
+      log = saved.log || [];
     } else {
       tiles = shuffle(day.groups.flatMap((g) => g.words));
       solved = [];
       lives = LIVES;
       guesses = [];
       guessKeys = new Set();
+      order = tiles.slice();
+      log = [];
     }
     selected = new Set();
     finished = false;
@@ -317,7 +328,8 @@
 
     app.innerHTML = `
       ${mode === "archive" ? `<div class="banner">back grid — doesn't touch your streak</div>` : ""}
-      ${solved.length === 0 && !finished ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire. Hard groups early score big — save the easiest for last.</p>` : ""}
+      ${mode === "watch" ? `<div class="banner">replay — ${esc(watchWho)}'s grid</div>` : ""}
+      ${solved.length === 0 && !finished && mode !== "watch" ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire. Hard groups early score big — save the easiest for last.</p>` : ""}
       <div class="board" id="board">
         ${bands}
         ${tiles.length ? `<div class="grid" id="grid">${tiles.map(tileHTML).join("")}</div>` : ""}
@@ -379,11 +391,11 @@
           <div class="scorebox">Score <span class="n">${runningScore()}</span></div>
           ${mode === "daily" ? `<div class="scorebox clockbox">Time <span class="n" id="clock-n">${day && clockMs(day.date) !== null ? clockText(clockMs(day.date)) : "--:--"}</span></div>` : ""}
         </div>
-        <div class="controls">
+        ${mode === "watch" ? "" : `<div class="controls">
           <button class="pill" id="shuffle-btn">Scramble</button>
           <button class="pill" id="deselect-btn">Clear</button>
           <button class="pill loud" id="submit-btn" disabled>Fire</button>
-        </div>
+        </div>`}
       </div>
     `;
   }
@@ -401,7 +413,7 @@
   // ── Play ─────────────────────────────────────────────────────────────────
 
   function toggle(word) {
-    if (finished) return;
+    if (finished || mode === "watch") return;
     if (selected.has(word)) selected.delete(word);
     else if (selected.size < 4) selected.add(word);
     syncTiles();
@@ -416,10 +428,17 @@
       toast("Already fired that");
       return;
     }
+    fire(picked);
+  }
 
+  // One fire of four words: the animation, the band or the lost life, the end
+  // of the round. Resolves when the board has settled, so a replay can wait.
+  function fire(picked) {
     const owners = picked.map(groupOf);
-    guessKeys.add(key);
+    guessKeys.add(picked.slice().sort().join("|"));
     guesses.push(owners.slice().sort((a, b) => a - b));
+    if (mode !== "watch") log.push({ w: picked.slice(), t: mode === "daily" ? (clockMs(day.date) || 0) : 0 });
+    return new Promise((settle) => {
 
     const counts = {};
     for (const gi of owners) counts[gi] = (counts[gi] || 0) + 1;
@@ -446,6 +465,7 @@
           saveProgress();
           renderBoard();
         }
+        settle();
       }, 320);
       return;
     }
@@ -471,12 +491,14 @@
       finished = true;
       if (mode === "daily") clockStop(day.date);
       toast("Game over");
-      setTimeout(() => revealRemaining(), 700);
+      setTimeout(() => { revealRemaining(); settle(); }, 700);
       return;
     }
 
     toast(best === 3 ? "Missed by one" : "Miss");
     saveProgress();
+    setTimeout(settle, 450);
+    });
   }
 
   // The survivors celebrate a cleared grid.
@@ -512,6 +534,10 @@
   function finish(won) {
     const mistakes = LIVES - Math.max(lives, 0);
     const score = scoreFromRows(guesses);
+    if (mode === "watch") {   // the replay's own bar says what happened
+      if (window.GuffWatch) GuffWatch.note(`${verdictFor(won, mistakes)} · ${score}/${SCORE_MAX}`);
+      return;
+    }
     let data = null;
     if (mode !== "builtin") data = recordResult(day.date, won, mistakes, guesses, score);
     renderResults(won, mistakes, false, data);
@@ -574,7 +600,8 @@
     const resultsEl = slot.querySelector(".results");
     if (resultsEl) whenGuffBar(function () {
       if (!window.GuffBar) return;
-      if (mode === "daily") GuffBar.completedToday(resultsEl, { date: day.date, score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX, ms: ms === null ? undefined : ms });
+      if (mode === "daily") GuffBar.completedToday(resultsEl, { date: day.date, score: score, max: SCORE_MAX, display: score + "/" + SCORE_MAX, ms: ms === null ? undefined : ms,
+        replay: log.length ? { v: 1, e: "g1", order, log } : undefined });
       else if (mode === "archive") GuffBar.show(resultsEl);
     });
 
@@ -737,8 +764,63 @@
     const params = new URLSearchParams(location.search);
     if (location.hash === "#archive") return renderArchive();
     if (location.hash === "#newsletter") return renderNewsletter();
+    if (params.get("watch")) return startWatch();
     return loadDaily(params.get("date"));
   }
+
+  // ── Watching someone's grid (?watch=<date>.<INI>, from the league) ───────
+  // guff-watch.js owns the fetch, the spoiler rule and the control bar; this
+  // owns the board. Each step lights the four words, then fires them.
+  let watchWho = "";
+  function startWatch() {
+    issueLine.textContent = "replay";
+    app.innerHTML = `<p class="loading-note">Fetching the replay…</p>`;
+    const sc = document.createElement("script");
+    sc.src = "https://guff.carl-b82.workers.dev/guff-watch.js";
+    sc.onerror = () => renderError("The replay player didn't load.");
+    sc.onload = () => {
+      let LOG = [];
+      GuffWatch.run({
+        game: "groupie", name: "Groupie",
+        played: (date) => !!((store.read().results || {})[date]),
+        begin(data) {
+          LOG = (data.replay && Array.isArray(data.replay.log)) ? data.replay.log : [];
+          watchWho = data.initials || "???";
+          mode = "watch";
+          if (!day || day.date !== data.date) {
+            // Fetch the grid, then show it. begin() must answer at once, so the
+            // first step waits for this.
+            day = null;
+            watchReady = fetchJSON(`/api/puzzle?date=${data.date}`).then((d) => { day = d; dealWatch(data); });
+          } else { dealWatch(data); watchReady = Promise.resolve(); }
+          return LOG.length;
+        },
+        async step(i) {
+          await watchReady;
+          if (!day) throw new Error("no grid");
+          const words = (LOG[i] && LOG[i].w) || [];
+          selected.clear();
+          for (const w of words) { selected.add(w); syncTiles(); await wait(220 / GuffWatch.speed); }
+          await wait(420 / GuffWatch.speed);
+          GuffWatch.note(words.join(" · ") + (LOG[i].t ? " · " + clockText(LOG[i].t) : ""));
+          await fire(words);
+          return 250 / GuffWatch.speed;
+        },
+        finish() {},
+      });
+    };
+    document.head.appendChild(sc);
+  }
+  let watchReady = Promise.resolve();
+  function dealWatch(data) {
+    const dealt = data.replay && Array.isArray(data.replay.order) && data.replay.order.length === 16
+      ? data.replay.order : day.groups.flatMap((g) => g.words);
+    tiles = dealt.slice(); solved = []; lives = LIVES; guesses = []; guessKeys = new Set();
+    selected = new Set(); finished = false; revealed = new Set();
+    updateIssueLine();
+    renderBoard();
+  }
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   document.getElementById("nav-today").addEventListener("click", (e) => {
     e.preventDefault();

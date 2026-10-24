@@ -528,6 +528,34 @@ const INITIALS_BLOCKLIST = new Set([
   "ASS", "FUK", "FUC", "FCK", "SHT", "CNT", "DIK", "COK", "FAG", "NIG",
 ]);
 
+// Every score filed under a set of initials, each with its day's position (the
+// today table's order) and how many were on that board. Shared by /me and
+// /profile (24 Oct 2026). Two ids under the same initials on the same game on
+// the same day: the first one filed counts.
+async function playerRows(env, initials) {
+  const { results: raw } = await env.DB.prepare(
+    `WITH r AS (
+       SELECT s.date AS d, s.game AS g, s.score AS s, s.max AS m, s.display AS disp,
+              s.ms, s.at, s.rowid AS rid, pl.initials AS ini,
+              ROW_NUMBER() OVER (PARTITION BY s.date, s.game
+                ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC) AS rk,
+              COUNT(*) OVER (PARTITION BY s.date, s.game) AS n
+       FROM league_scores s JOIN players pl ON pl.id = s.id
+     )
+     SELECT d, g, s, m, disp, ms, at, rk, n, rid FROM r WHERE ini = ? ORDER BY d ASC, rid ASC`
+  ).bind(initials).all();
+  const seen = new Set();
+  const rows = [];
+  for (const r of raw || []) {
+    const k = r.d + "|" + r.g;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    delete r.rid;
+    rows.push(r);
+  }
+  return rows;
+}
+
 async function serveLeague(url, request, env, path) {
   if (request.method === "OPTIONS")
     return new Response(null, { status: 204, headers: DOCKET_CORS });
@@ -687,27 +715,7 @@ async function serveLeague(url, request, env, path) {
     if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
     const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
     if (!p) return docketJson({ initials: null, rows: [], avg: {} });
-    const { results: raw } = await env.DB.prepare(
-      `WITH r AS (
-         SELECT s.date AS d, s.game AS g, s.score AS s, s.max AS m, s.display AS disp,
-                s.ms, s.at, s.rowid AS rid, pl.initials AS ini,
-                ROW_NUMBER() OVER (PARTITION BY s.date, s.game
-                  ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC) AS rk,
-                COUNT(*) OVER (PARTITION BY s.date, s.game) AS n
-         FROM league_scores s JOIN players pl ON pl.id = s.id
-       )
-       SELECT d, g, s, m, disp, ms, at, rk, n, rid FROM r WHERE ini = ? ORDER BY d ASC, rid ASC`
-    ).bind(p.initials).all();
-    // Two of your ids on the same game on the same day: the first one filed counts.
-    const seen = new Set();
-    const rows = [];
-    for (const r of raw || []) {
-      const k = r.d + "|" + r.g;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      delete r.rid;
-      rows.push(r);
-    }
+    const rows = await playerRows(env, p.initials);
     const { results: av } = await env.DB.prepare(
       `SELECT s.game AS g, AVG(s.score) AS a, COUNT(*) AS n
        FROM league_scores s JOIN players pl ON pl.id = s.id GROUP BY s.game`
@@ -715,6 +723,44 @@ async function serveLeague(url, request, env, path) {
     const avg = {};
     for (const a of av || []) avg[a.g] = { a: Math.round(a.a * 10) / 10, n: a.n };
     return docketJson({ initials: p.initials, today, rows, avg });
+  }
+
+  // GET /api/league/profile?ini=CSL → a player's public page (24 Oct 2026, Carl:
+  // "each player should have their own page: how they rank versus other people in
+  // different games, stats beyond the top ten"). Two parts:
+  //   rows: every score under these initials with its day's position, as /me
+  //   standings: per game, EVERY player's best ever score, ranked. The asker finds
+  //              their own row by initials. One row per player per game (their best:
+  //              score, then fastest), ordered as the all-time table is. So the
+  //              player who is 23rd of 31 at Guffitaire sees exactly that.
+  if (path === "/api/league/profile" && request.method === "GET") {
+    const ini = String(url.searchParams.get("ini") || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+    if (ini.length !== 3) return docketJson({ error: "Bad initials" }, 400);
+    const known = await env.DB.prepare("SELECT 1 AS k FROM players WHERE initials = ? LIMIT 1").bind(ini).first();
+    if (!known) return docketJson({ initials: ini, known: false, rows: [], standings: {}, avg: {} }, 404);
+    const rows = await playerRows(env, ini);
+    const { results: st } = await env.DB.prepare(
+      `WITH best AS (
+         SELECT s.game, pl.initials, s.score, s.max, s.display, s.ms, s.date,
+                ROW_NUMBER() OVER (PARTITION BY s.game, pl.initials
+                  ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.date ASC, s.rowid ASC) AS rn,
+                COUNT(*) OVER (PARTITION BY s.game, pl.initials) AS plays
+         FROM league_scores s JOIN players pl ON pl.id = s.id
+         WHERE s.score > 0
+       )
+       SELECT game AS g, initials AS ini, score AS s, max AS m, display AS disp, ms, date AS d, plays
+       FROM best WHERE rn = 1
+       ORDER BY game, score DESC, (ms IS NULL) ASC, ms ASC, date ASC`
+    ).all();
+    const standings = {};
+    for (const r of st || []) (standings[r.g] = standings[r.g] || []).push(r);
+    const { results: av } = await env.DB.prepare(
+      `SELECT s.game AS g, AVG(s.score) AS a, COUNT(*) AS n
+       FROM league_scores s JOIN players pl ON pl.id = s.id GROUP BY s.game`
+    ).all();
+    const avg = {};
+    for (const a of av || []) avg[a.g] = { a: Math.round(a.a * 10) / 10, n: a.n };
+    return docketJson({ initials: ini, known: true, today, rows, standings, avg });
   }
 
   // GET /api/league/replay?game=&date=&ini= → a score's replay, for the game's
