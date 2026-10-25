@@ -28,6 +28,7 @@ export default {
       if (path === "/api/docket") return await serveDocket(url, request, env);
       if (path === "/api/prefs") return await servePrefs(url, request, env);
       if (path === "/api/visit") return await serveVisit(request, env);
+      if (path === "/api/lab-feedback") return await serveLabFeedback(url, request, env);
       if (path === "/api/sources") return await serveSources(url, request, env);
       if (path.startsWith("/api/league")) return await serveLeague(url, request, env, path);
       if (path === "/api/generate") return await serveGenerate(request, env);
@@ -351,6 +352,80 @@ async function servePrefs(url, request, env) {
     ).bind("ini:" + p.initials, text, at));
     await env.DB.batch(stmts);
     return docketJson({ ok: true, at });
+  }
+
+  return docketJson({ error: "Not found" }, 404);
+}
+
+// ─── Guff Lab feedback (25 Oct 2026) ────────────────────────────────────────
+// Thumbs up or down, plus optional free text, from games in the Guff Lab
+// (sneak previews not yet in the league). First game: This Way Up.
+// One row per player, game and day: a later vote or comment that day updates it.
+// ctx is a small JSON blob from the game (score, landed or popped, first ever
+// flight, tortoise used, phone or desktop) so the votes can be read in context.
+// POST /api/lab-feedback {game, id, date, vote: 1|-1, comment?, ctx?} → { ok }
+// GET  /api/lab-feedback?game=  (Authorization: Bearer ADMIN_TOKEN) → { rows }
+// The Worker creates the table on first use; see migrations/2026-10-25-lab-feedback.sql.
+const LAB_GAMES = new Set(["thiswayup"]);
+let labTableReady = false;
+async function ensureLabTable(env) {
+  if (labTableReady) return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS lab_feedback (game TEXT NOT NULL, id TEXT NOT NULL, date TEXT NOT NULL, vote INTEGER NOT NULL, comment TEXT, ctx TEXT, at TEXT NOT NULL, PRIMARY KEY (game, id, date))"
+  ).run();
+  labTableReady = true;
+}
+function cleanCtx(ctx) {
+  if (!ctx || typeof ctx !== "object" || Array.isArray(ctx)) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(ctx).slice(0, 20)) {
+    if (!/^[a-zA-Z]{1,20}$/.test(k)) continue;
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+    else if (typeof v === "boolean") out[k] = v;
+    else if (typeof v === "string") out[k] = v.slice(0, 40);
+  }
+  return JSON.stringify(out);
+}
+async function serveLabFeedback(url, request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...DOCKET_CORS, "Access-Control-Allow-Headers": "Content-Type, Authorization" } });
+  await ensureLabTable(env);
+
+  if (request.method === "GET") {
+    const auth = request.headers.get("Authorization") || "";
+    if (!env.ADMIN_TOKEN || auth !== `Bearer ${env.ADMIN_TOKEN}`) return docketJson({ error: "Unauthorized" }, 401);
+    const game = url.searchParams.get("game") || "thiswayup";
+    if (!LAB_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+    const { results } = await env.DB.prepare(
+      "SELECT date, vote, comment, ctx, at, substr(id, 1, 6) AS who FROM lab_feedback WHERE game = ? ORDER BY at DESC LIMIT 2000"
+    ).bind(game).all();
+    const rows = (results || []).map(r => {
+      let ctx = null;
+      try { ctx = r.ctx ? JSON.parse(r.ctx) : null; } catch { ctx = null; }
+      return { date: r.date, vote: r.vote, comment: r.comment || "", ctx, at: r.at, who: r.who };
+    });
+    return docketJson({ game, rows });
+  }
+
+  if (request.method === "POST") {
+    let body = {};
+    try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+    const today = todayISO();
+    const game = typeof body.game === "string" ? body.game : "";
+    const id = typeof body.id === "string" ? body.id : "";
+    const date = typeof body.date === "string" ? body.date : today;
+    const vote = body.vote === 1 || body.vote === -1 ? body.vote : 0;
+    const comment = typeof body.comment === "string" ? body.comment.trim().slice(0, 1000) : "";
+    if (!LAB_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+    if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+    if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
+    if (!vote) return docketJson({ error: "Vote must be 1 or -1" }, 400);
+    await env.DB.prepare(
+      `INSERT INTO lab_feedback (game, id, date, vote, comment, ctx, at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(game, id, date) DO UPDATE SET vote = excluded.vote,
+         comment = CASE WHEN excluded.comment <> '' THEN excluded.comment ELSE lab_feedback.comment END,
+         ctx = COALESCE(excluded.ctx, lab_feedback.ctx), at = excluded.at`
+    ).bind(game, id, date, vote, comment, cleanCtx(body.ctx), new Date().toISOString()).run();
+    return docketJson({ ok: true });
   }
 
   return docketJson({ error: "Not found" }, 404);

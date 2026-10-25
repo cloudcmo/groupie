@@ -84,6 +84,8 @@ curl https://groupie.fun/api/health
 | `GET /api/health` | How many days are queued and how far ahead. |
 | `POST /api/generate` | Writes new days. Needs the admin token. |
 | `POST /api/subscribe` | Newsletter signup via Resend (shared Friday segment). |
+| `POST /api/lab-feedback` | Guff Lab sneak-preview feedback (thumbs up/down, optional comment, game context). Table `lab_feedback`, created on first use. First game: This Way Up. |
+| `GET /api/lab-feedback?game=` | All feedback for a Lab game. Needs the admin token. Read at thiswayup.carlosfandango.net/feedback. |
 
 Installable to a home screen via `manifest.webmanifest` (`add-to-home.html`
 walks players through it).
