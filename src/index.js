@@ -6,6 +6,7 @@ import { validateDay } from "./generate.js";
 import { handleSubscribe } from "./subscribe.js";
 
 import { MOVE, movedResponse } from "./moved.js";
+import { serveCheers, attachCheers, cheersReceived, cheersNews, guffbotSalute } from "./cheers.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -633,9 +634,20 @@ async function playerRows(env, initials) {
 
 async function serveLeague(url, request, env, path) {
   if (request.method === "OPTIONS")
-    return new Response(null, { status: 204, headers: DOCKET_CORS });
+    return new Response(null, { status: 204, headers: { ...DOCKET_CORS, "Access-Control-Allow-Headers": "Content-Type, Authorization" } });
 
   const today = todayISO();
+
+  // Cheers on scores (27 Oct 2026): /api/league/cheer, /cheers/*, /cheered. See src/cheers.js.
+  if (path === "/api/league/cheer" || path.startsWith("/api/league/cheers/") || path === "/api/league/cheered") {
+    try {
+      const res = await serveCheers(url, request, env, path, { json: docketJson, validId: validDocketId, games: DOCKET_GAMES });
+      if (res) return res;
+    } catch (err) {
+      console.error(`${path} failed:`, err);
+      return docketJson({ error: "Internal error" }, 500);   // with CORS, so the page sees the error
+    }
+  }
 
   // GET /api/league/player?id= → { initials } (or {})
   if (path === "/api/league/player" && request.method === "GET") {
@@ -768,6 +780,18 @@ async function serveLeague(url, request, env, path) {
       (ms !== null && score === prior?.best && (fastestAtBest === null || ms < fastestAtBest));
     const record = stored && score > 0 && (prior?.n || 0) >= RECORD_MIN_SCORES && beats;
     const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
+    // GuffBot salutes every all-time record and every maximum score (27 Oct 2026),
+    // a cheer from him on the league so a great score never sits there unloved.
+    // "Maximum" is only trusted where the top score is fixed (3/3, 24/24, 50/50, 10/10), the
+    // same list the bar's party uses; open-ended games say `perfect` when they know.
+    const SALUTE_FIXED = new Set(["pqd", "groupie", "whatword", "whenly"]);
+    const perfect = body.perfect === true || (SALUTE_FIXED.has(game) && max > 0 && score >= max);
+    if (stored && p && score > 0 && (record || perfect))
+      await guffbotSalute(env, game, date, p.initials);
+    // Cheers other players have given this player since they last looked, for the
+    // bar's news line (27 Oct 2026). Never fails the score.
+    let cheers = null;
+    if (p) { try { cheers = await cheersNews(env, p.initials); } catch (e) { cheers = null; } }
     // Not stored means an earlier score already holds this day: hand it back
     // so the bar can say which score counts (30 Sept 2026).
     let existing = null;
@@ -776,7 +800,7 @@ async function serveLeague(url, request, env, path) {
         "SELECT score, max, display FROM league_scores WHERE id = ? AND date = ? AND game = ?"
       ).bind(id, date, game).first();
     }
-    return docketJson({ ok: true, initials: p ? p.initials : null, stored, record, existing });
+    return docketJson({ ok: true, initials: p ? p.initials : null, stored, record, existing, cheers });
   }
 
   // GET /api/league/me?id= → everything the "My stats" page needs (5 Oct 2026).
@@ -835,7 +859,9 @@ async function serveLeague(url, request, env, path) {
     ).all();
     const avg = {};
     for (const a of av || []) avg[a.g] = { a: Math.round(a.a * 10) / 10, n: a.n };
-    return docketJson({ initials: ini, known: true, today, rows, standings, avg });
+    // Cheers this player has been given (27 Oct 2026), newest first, for the player page.
+    const cheers = await cheersReceived(env, ini);
+    return docketJson({ initials: ini, known: true, today, rows, standings, avg, cheers });
   }
 
   // GET /api/league/replay?game=&date=&ini= → a score's replay, for the game's
@@ -925,6 +951,8 @@ async function serveLeague(url, request, env, path) {
         });
     }
     if (askMe) for (const g in meGames) meGames[g].total = ranks[g] || 0;
+    // Cheers on every row shown, as `ch: [{ e, by: [INI] }]` (27 Oct 2026).
+    await attachCheers(env, mode, date, games);
     const payload = { mode, date: mode === "today" ? date : null, games };
     // The asker's own day: score, display and rank per game — the share
     // card's raw material. Only for today mode, only when an id is sent.

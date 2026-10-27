@@ -127,3 +127,19 @@ CREATE TABLE IF NOT EXISTS pending (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   filed_at TEXT
 );
+
+-- Cheers on league scores (27 Oct 2026; see migrations/2026-10-27-league-cheers.sql and
+-- src/cheers.js, which creates these on first use).
+CREATE TABLE IF NOT EXISTS league_cheers (
+  game TEXT NOT NULL, date TEXT NOT NULL, to_ini TEXT NOT NULL,
+  from_ini TEXT NOT NULL, from_id TEXT, emoji TEXT NOT NULL, at TEXT NOT NULL,
+  off INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (game, date, to_ini, from_ini, emoji)
+);
+CREATE INDEX IF NOT EXISTS idx_cheers_date ON league_cheers(date, game);
+CREATE INDEX IF NOT EXISTS idx_cheers_to   ON league_cheers(to_ini, at);
+CREATE INDEX IF NOT EXISTS idx_cheers_from ON league_cheers(from_ini, at);
+CREATE TABLE IF NOT EXISTS league_cheer_seen (initials TEXT PRIMARY KEY, at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS league_banned (initials TEXT PRIMARY KEY, at TEXT NOT NULL, note TEXT);
+-- Browser ids that cheered under banned initials (banned with them, so new initials don't get round it).
+CREATE TABLE IF NOT EXISTS league_banned_ids (id TEXT PRIMARY KEY, initials TEXT, at TEXT NOT NULL);
