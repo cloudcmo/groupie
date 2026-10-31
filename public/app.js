@@ -85,6 +85,10 @@
 
   let tiles = [];         // words still on the grid, in display order
   let selected = new Set();
+  // Held groups (31 Oct 2026): four tiles parked above the grid, unchecked,
+  // to fire later in whatever order you like. Held words are off the grid.
+  let held = [];          // arrays of four words
+  let heldSel = -1;       // index of the held band picked to fire, or -1
   let solved = [];        // group indices, in solve order
   let lives = LIVES;
   let guesses = [];       // arrays of group indices (one per word), for the share grid
@@ -153,7 +157,7 @@
     if (mode === "builtin" || mode === "watch" || finished || !day) return;
     const data = store.read();
     data.state = data.state || {};
-    data.state[day.date] = { tiles, solved, lives, guesses, order, log };
+    data.state[day.date] = { tiles, held, solved, lives, guesses, order, log };
     store.write(data);
   }
 
@@ -258,6 +262,8 @@
       solved = [...fired, ...rest];
       revealed = new Set(prior.won ? [] : rest);
       tiles = [];
+      held = [];
+      heldSel = -1;
       selected = new Set();
       guesses = prior.rows || [];
       order = prior.order || [];
@@ -272,6 +278,7 @@
     const saved = mode !== "builtin" ? loadProgress(day.date) : null;
     if (saved && Array.isArray(saved.tiles)) {
       tiles = saved.tiles;
+      held = Array.isArray(saved.held) ? saved.held : [];
       solved = saved.solved || [];
       lives = typeof saved.lives === "number" ? saved.lives : LIVES;
       guesses = saved.guesses || [];
@@ -280,6 +287,7 @@
       log = saved.log || [];
     } else {
       tiles = shuffle(day.groups.flatMap((g) => g.words));
+      held = [];
       solved = [];
       lives = LIVES;
       guesses = [];
@@ -288,6 +296,7 @@
       log = [];
     }
     selected = new Set();
+    heldSel = -1;
     finished = false;
     revealed = new Set();
     renderBoard();
@@ -329,9 +338,10 @@
     app.innerHTML = `
       ${mode === "archive" ? `<div class="banner">back grid — doesn't touch your streak</div>` : ""}
       ${mode === "watch" ? `<div class="banner">replay — ${esc(watchWho)}'s grid</div>` : ""}
-      ${solved.length === 0 && !finished && mode !== "watch" ? `<p class="brief">Sixteen words. Four hidden groups. Lock four, then fire. Hard groups early score big — save the easiest for last.</p>` : ""}
+      ${solved.length === 0 && !finished && mode !== "watch" ? `<p class="brief">Sixteen words. Four hidden groups. Pick four, then fire, or hold them to fire later. Hard groups early score big, so save the easiest for last.</p>` : ""}
       <div class="board" id="board">
         ${bands}
+        ${held.map(heldHTML).join("")}
         ${tiles.length ? `<div class="grid" id="grid">${tiles.map(tileHTML).join("")}</div>` : ""}
       </div>
       ${finished ? "" : dockHTML()}
@@ -344,8 +354,23 @@
     const shuffleBtn = document.getElementById("shuffle-btn");
     const deselectBtn = document.getElementById("deselect-btn");
     const submitBtn = document.getElementById("submit-btn");
+    const holdBtn = document.getElementById("hold-btn");
+    app.querySelectorAll(".held-band").forEach((band) => {
+      const i = Number(band.dataset.h);
+      band.addEventListener("click", (e) => {
+        if (e.target.closest(".held-x")) return;
+        pickHeld(i);
+      });
+      band.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickHeld(i); }
+      });
+    });
+    app.querySelectorAll(".held-x").forEach((x) => {
+      x.addEventListener("click", () => releaseHeld(Number(x.dataset.x)));
+    });
     if (shuffleBtn) shuffleBtn.addEventListener("click", () => { tiles = shuffle(tiles); saveProgress(); renderBoard(); });
-    if (deselectBtn) deselectBtn.addEventListener("click", () => { selected.clear(); syncTiles(); });
+    if (deselectBtn) deselectBtn.addEventListener("click", () => { selected.clear(); heldSel = -1; syncTiles(); });
+    if (holdBtn) holdBtn.addEventListener("click", hold);
     if (submitBtn) submitBtn.addEventListener("click", submit);
     syncTiles();
     fitTiles();
@@ -375,6 +400,18 @@
     `;
   }
 
+  function heldHTML(words, i) {
+    return `
+      <div class="held-band" data-h="${i}" role="button" tabindex="0" aria-label="Held group: ${words.map(esc).join(", ")}">
+        <div class="held-text">
+          <div class="held-tag">held · tap to pick</div>
+          <div class="held-words">${words.map(esc).join(" · ")}</div>
+        </div>
+        <button class="held-x" data-x="${i}" aria-label="Put these back on the grid">×</button>
+      </div>
+    `;
+  }
+
   function tileHTML(word) {
     const len = word.length;
     const sizeClass = len > 12 ? "len-l" : len > 8 ? "len-m" : "";
@@ -392,8 +429,9 @@
           ${mode === "daily" ? `<div class="scorebox clockbox">Time <span class="n" id="clock-n">${day && clockMs(day.date) !== null ? clockText(clockMs(day.date)) : "--:--"}</span></div>` : ""}
         </div>
         ${mode === "watch" ? "" : `<div class="controls">
-          <button class="pill" id="shuffle-btn">Scramble</button>
+          <button class="pill" id="shuffle-btn">Mix</button>
           <button class="pill" id="deselect-btn">Clear</button>
+          <button class="pill hold" id="hold-btn" disabled>Hold</button>
           <button class="pill loud" id="submit-btn" disabled>Fire</button>
         </div>`}
       </div>
@@ -404,23 +442,87 @@
     app.querySelectorAll("button.tile").forEach((btn) => {
       btn.classList.toggle("selected", selected.has(btn.dataset.w));
     });
+    app.querySelectorAll(".held-band").forEach((band) => {
+      const on = Number(band.dataset.h) === heldSel;
+      band.classList.toggle("on", on);
+      const tag = band.querySelector(".held-tag");
+      if (tag) tag.textContent = on ? "held · ready to fire" : "held · tap to pick";
+    });
     const submitBtn = document.getElementById("submit-btn");
-    if (submitBtn) submitBtn.disabled = selected.size !== 4;
+    if (submitBtn) submitBtn.disabled = !(selected.size === 4 || heldSel >= 0);
+    const holdBtn = document.getElementById("hold-btn");
+    // Always leave at least four tiles on the grid: the last group forms itself.
+    if (holdBtn) holdBtn.disabled = !(selected.size === 4 && tiles.length >= 8);
     const deselectBtn = document.getElementById("deselect-btn");
-    if (deselectBtn) deselectBtn.disabled = selected.size === 0;
+    if (deselectBtn) deselectBtn.disabled = selected.size === 0 && heldSel < 0;
   }
 
   // ── Play ─────────────────────────────────────────────────────────────────
 
   function toggle(word) {
     if (finished || mode === "watch") return;
+    heldSel = -1;
     if (selected.has(word)) selected.delete(word);
     else if (selected.size < 4) selected.add(word);
     syncTiles();
   }
 
+  // Park the four selected tiles above the grid. No check, no clue.
+  function hold() {
+    if (finished || selected.size !== 4 || tiles.length < 8) return;
+    const words = tiles.filter((w) => selected.has(w));
+    tiles = tiles.filter((w) => !selected.has(w));
+    held.push(words);
+    selected.clear();
+    heldSel = -1;
+    saveProgress();
+    renderBoard();
+  }
+
+  function pickHeld(i) {
+    if (finished || mode === "watch") return;
+    heldSel = heldSel === i ? -1 : i;
+    selected.clear();
+    syncTiles();
+  }
+
+  function releaseHeld(i) {
+    if (finished || !held[i]) return;
+    tiles = tiles.concat(held[i]);
+    held.splice(i, 1);
+    heldSel = -1;
+    saveProgress();
+    renderBoard();
+  }
+
+  // Fire a held band. A right one pops in place; a wrong one drops back onto
+  // the grid still selected, so one swap fixes it.
+  function fireHeld(i) {
+    const words = held[i];
+    if (!words) return;
+    if (guessKeys.has(words.slice().sort().join("|"))) {
+      toast("Already fired that");
+      return;
+    }
+    const right = words.every((w) => groupOf(w) === groupOf(words[0]));
+    heldSel = -1;
+    if (right) {
+      const band = app.querySelector(`.held-band[data-h="${i}"]`);
+      if (band) band.classList.add("pop");
+      fire(words);
+      return;
+    }
+    held.splice(i, 1);
+    tiles = tiles.concat(words);
+    selected = new Set(words);
+    renderBoard();
+    fire(words);
+  }
+
   function submit() {
-    if (selected.size !== 4 || finished) return;
+    if (finished) return;
+    if (heldSel >= 0) return fireHeld(heldSel);
+    if (selected.size !== 4) return;
     const picked = [...selected];
     const key = picked.slice().sort().join("|");
 
@@ -455,6 +557,7 @@
       });
       setTimeout(() => {
         tiles = tiles.filter((w) => !day.groups[gi].words.includes(w));
+        held = held.filter((h) => !h.every((w) => day.groups[gi].words.includes(w)));
         if (solved.length === 4) {
           finished = true;
           if (mode === "daily") clockStop(day.date);
@@ -512,6 +615,8 @@
     // Reveal the unsolved groups one by one, easiest first.
     const remaining = allGroupIndicesInDifficultyOrder().filter((gi) => !solved.includes(gi));
     selected.clear();
+    held = [];
+    heldSel = -1;
 
     const step = () => {
       if (!remaining.length) {
