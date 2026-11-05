@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS docket (
   wordminer INTEGER NOT NULL DEFAULT 0,  -- Wordminer, added 25 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
   guffitaire INTEGER NOT NULL DEFAULT 0, -- Guffitaire, added 25 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
   helmet INTEGER NOT NULL DEFAULT 0,     -- Helmet, added 16 Oct 2026 (live: ALTER TABLE docket ADD COLUMN)
+  wordraver INTEGER NOT NULL DEFAULT 0,  -- Word Raver, added 5 Nov 2026 (live: ALTER TABLE docket ADD COLUMN)
   PRIMARY KEY (id, date)
 );
 
