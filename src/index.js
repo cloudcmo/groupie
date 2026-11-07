@@ -890,6 +890,58 @@ async function serveLeague(url, request, env, path) {
     return docketJson({ game, date, initials: ini, score: row.score, display: row.display, ms: row.ms, replay });
   }
 
+  // GET /api/league?mode=week|month → who is doing best this week / this month, per game
+  // (7 Nov 2026, Carl, from a player's idea: if you don't check back at the end of the day you
+  // have no idea how you did against everyone else). Calendar periods, UK days: Monday to today,
+  // and the 1st to today. To qualify you need at least 2 days played in the week, 8 in the month.
+  // Ranked by your average over the days you played: share of the day's top score where the game
+  // has one (so an easy day and a hard day weigh the same), raw score where it doesn't
+  // (Spellbound; and Guffitaire, whose `max` is each player's own, not the day's), then average time (quicker first), then more days played. One day counts once
+  // per player (two devices on one day: the better score). `champs` is the period before:
+  // last week's or last month's final top three, so a fresh week still has something to show.
+  if (path === "/api/league" && request.method === "GET" && (url.searchParams.get("mode") === "week" || url.searchParams.get("mode") === "month")) {
+    const mode = url.searchParams.get("mode");
+    const to = today;
+    let from, prevFrom, prevTo, min;
+    if (mode === "week") {
+      const dow = (new Date(to + "T12:00:00Z").getUTCDay() + 6) % 7;   // Monday 0 .. Sunday 6
+      from = addDays(to, -dow); prevFrom = addDays(from, -7); prevTo = addDays(from, -1); min = 2;
+    } else {
+      from = to.slice(0, 8) + "01"; prevTo = addDays(from, -1); prevFrom = prevTo.slice(0, 8) + "01"; min = 8;
+    }
+    const standings = async (a, b, limit) => {
+      const { results } = await env.DB.prepare(
+        `WITH d AS (
+           SELECT s.game, p.initials AS ini, s.date,
+                  MAX(CASE WHEN s.max > 0 AND s.game NOT IN ('guffitaire') THEN 100.0 * s.score / s.max ELSE s.score END) AS v,
+                  MAX(s.score) AS score, MAX(s.max) AS mx, MIN(s.ms) AS ms
+           FROM league_scores s JOIN players p ON p.id = s.id
+           WHERE s.date BETWEEN ? AND ?
+           GROUP BY s.game, p.initials, s.date
+         )
+         SELECT game, ini, COUNT(*) AS days, AVG(v) AS v, AVG(score) AS a, MIN(mx) AS mxlo, MAX(mx) AS mxhi, AVG(ms) AS ms
+         FROM d GROUP BY game, ini HAVING COUNT(*) >= ?
+         ORDER BY game, v DESC, (AVG(ms) IS NULL) ASC, AVG(ms) ASC, days DESC, ini ASC`
+      ).bind(a, b, min).all();
+      const out = {};
+      for (const r of results || []) {
+        const list = out[r.game] || (out[r.game] = []);
+        if (list.length >= limit) continue;
+        const raw = r.game === "guffitaire" || !(r.mxlo > 0), fixed = !raw && r.mxlo === r.mxhi;
+        list.push({
+          initials: r.ini, days: r.days,
+          // what to show: the average score "of" a fixed top score (2.6 of 3), else a share (87%), else the raw average
+          avg: Math.round(r.a * 10) / 10, of: fixed ? r.mxhi : null,
+          pct: !raw && !fixed ? Math.round(r.v) : null,
+          ms: r.ms != null ? Math.round(r.ms) : null,
+        });
+      }
+      return out;
+    };
+    const [games, champs] = await Promise.all([standings(from, to, 10), standings(prevFrom, prevTo, 3)]);
+    return docketJson({ mode, from, to, min, prev: { from: prevFrom, to: prevTo }, games, champs });
+  }
+
   // GET /api/league?date=&mode=today|all → the tables
   if (path === "/api/league" && request.method === "GET") {
     const mode = url.searchParams.get("mode") === "all" ? "all" : "today";
