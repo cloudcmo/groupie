@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS docket (
   guffitaire INTEGER NOT NULL DEFAULT 0, -- Guffitaire, added 25 Sept 2026 (live: ALTER TABLE docket ADD COLUMN)
   helmet INTEGER NOT NULL DEFAULT 0,     -- Helmet, added 16 Oct 2026 (live: ALTER TABLE docket ADD COLUMN)
   wordraver INTEGER NOT NULL DEFAULT 0,  -- Word Raver, added 5 Nov 2026 (live: ALTER TABLE docket ADD COLUMN)
+  gufftumble INTEGER NOT NULL DEFAULT 0, -- Guff Tumble, added 11 Nov 2026 (live: ALTER TABLE docket ADD COLUMN)
   PRIMARY KEY (id, date)
 );
 

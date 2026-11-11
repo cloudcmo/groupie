@@ -31,6 +31,7 @@ export default {
       if (path === "/api/visit") return await serveVisit(request, env);
       if (path === "/api/lab-feedback") return await serveLabFeedback(url, request, env);
       if (path === "/api/sources") return await serveSources(url, request, env);
+      if (path === "/api/daystats") return await serveDayStats(url, request, env);
       if (path.startsWith("/api/league")) return await serveLeague(url, request, env, path);
       if (path === "/api/generate") return await serveGenerate(request, env);
       if (path === "/api/subscribe") return await handleSubscribe(request, env);
@@ -122,8 +123,9 @@ async function serveHealth(env) {
 // wagdaily (Words and Guff Daily) took Twentee's place on 20 Sept 2026. twentee stays accepted
 // so its column and old rows keep working; its page stops reporting once the bar drops it.
 // wordminer and guffitaire joined the canon on 25 Sept 2026 (Guff games nine and ten).
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet", "wordraver"]);
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet", "wordraver", "gufftumble"]);
 // wordraver (Word Raver, was Guff3000) joined on 5 Nov 2026, Guff game twelve.
+// gufftumble (Guff Tumble) joined on 11 Nov 2026, the tenth of the daily ten (after three became classic games).
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -144,7 +146,7 @@ async function serveDocket(url, request, env) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet, wordraver FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet, wordraver, gufftumble FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -168,7 +170,7 @@ async function serveDocket(url, request, env) {
     ).bind(id, date).run();
 
     const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet, wordraver FROM docket WHERE id = ? AND date = ?"
+      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet, wordraver, gufftumble FROM docket WHERE id = ? AND date = ?"
     ).bind(id, date).first();
     return docketJson({ date, played: docketPlayed(row) });
   }
@@ -282,6 +284,47 @@ async function serveSources(url, request, env) {
   }
 
   return new Response(JSON.stringify({ date, games: out }), {
+    status: 200,
+    headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60", ...DOCKET_CORS },
+  });
+}
+
+// ─── One game's day, from the league (11 Nov 2026) ──────────────────────────
+// For games with no stats API of their own (first: Guff Tumble, which keeps no
+// database), the daily stats email reads the day from here. Public aggregates
+// only, no ids or initials: how many opened it, how many finished, the average
+// score and time, how many hit the day's maximum, and how the scores spread.
+// GET /api/daystats?game=gufftumble&date=YYYY-MM-DD
+async function serveDayStats(url, request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+  const game = url.searchParams.get("game") || "";
+  const date = url.searchParams.get("date") || todayISO();
+  if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
+  const agg = await env.DB.prepare(
+    `SELECT COUNT(*) AS finished, AVG(score) AS avgScore, AVG(ms) AS avgMs, MAX(max) AS max,
+            SUM(CASE WHEN max > 0 AND score >= max THEN 1 ELSE 0 END) AS perfect,
+            SUM(CASE WHEN score = 0 THEN 1 ELSE 0 END) AS zero
+       FROM league_scores WHERE game = ? AND date = ?`
+  ).bind(game, date).first();
+  const { results: spread } = await env.DB.prepare(
+    "SELECT score, COUNT(*) AS n FROM league_scores WHERE game = ? AND date = ? GROUP BY score ORDER BY score DESC"
+  ).bind(game, date).all();
+  const v = await env.DB.prepare(
+    "SELECT COUNT(DISTINCT id) AS n FROM visits WHERE game = ? AND date = ?"
+  ).bind(game, date).first();
+  const out = {
+    game, date,
+    visitors: (v && v.n) || 0,
+    finished: (agg && agg.finished) || 0,
+    avgScore: agg && agg.avgScore != null ? Math.round(agg.avgScore * 10) / 10 : null,
+    avgMs: agg && agg.avgMs != null ? Math.round(agg.avgMs) : null,
+    max: (agg && agg.max) || null,
+    perfect: (agg && agg.perfect) || 0,
+    zero: (agg && agg.zero) || 0,
+    spread: (spread || []).map((r) => ({ score: r.score, n: r.n })),
+  };
+  return new Response(JSON.stringify(out), {
     status: 200,
     headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60", ...DOCKET_CORS },
   });
@@ -507,6 +550,7 @@ function docketPlayed(row) {
     guffitaire: !!row?.guffitaire,
     helmet: !!row?.helmet,
     wordraver: !!row?.wordraver,
+    gufftumble: !!row?.gufftumble,
   };
 }
 
