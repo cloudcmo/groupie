@@ -55,6 +55,45 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="themes.css" />
+  <script>
+  /* Eras (11 Nov 2026): a different gaming era each weekday, by the grid's
+     date. Set here so the right skin and font arrive before first paint;
+     app.js calls GroupieEra.apply(date) again once the grid is known (back
+     grids keep their own day's era). ?era=sat previews any day. */
+  (function(){
+    var E={0:["sun","shooter HUD","Black+Ops+One&family=Rajdhani:wght@600;700&family=Share+Tech+Mono"],
+      1:["mon","bat and ball","Silkscreen:wght@400;700"],
+      2:["tue","woodgrain console","Jersey+15&family=Jersey+25"],
+      3:["wed","vector arcade",""],
+      4:["thu","8-bit micro","Micro+5&family=Sixtyfour"],
+      5:["fri","16-bit","Pixelify+Sans:wght@400;500;700"],
+      6:["sat","sports arcade","Tiny5&family=Doto:wght@700;900"]};
+    var BG={sun:"#11140f",mon:"#000000",tue:"#000000",wed:"#020308",thu:"#d7d7d7",fri:"#3a8cff",sat:"#2e7d32"};
+    var loaded={}, cur=null;
+    function pick(iso){
+      var q=(location.search.match(/[?&]era=(mon|tue|wed|thu|fri|sat|sun)\b/)||[])[1];
+      if(q){ for(var k in E){ if(E[k][0]===q) return E[k]; } }
+      var ok=iso&&/^\d{4}-\d\d-\d\d$/.test(iso)&&iso!=="0000-00-00";
+      return E[ok ? new Date(iso+"T12:00:00Z").getUTCDay() : new Date().getDay()];
+    }
+    function apply(iso){
+      var e=pick(iso), h=document.documentElement;
+      h.setAttribute("data-era",e[0]);
+      if(e[0]==="wed") h.removeAttribute("data-alt"); else h.setAttribute("data-alt","");
+      if(e[2]&&!loaded[e[0]]){
+        loaded[e[0]]=1;
+        var l=document.createElement("link"); l.rel="stylesheet";
+        l.href="https://fonts.googleapis.com/css2?family="+e[2]+"&display=swap";
+        document.head.appendChild(l);
+      }
+      var m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute("content",BG[e[0]]);
+      cur={key:e[0],name:e[1]}; return cur;
+    }
+    window.GroupieEra={apply:apply,get:function(){return cur;}};
+    try{ apply(null); }catch(err){}
+  })();
+  </script>
   <!-- Cloudflare Web Analytics (one token for all the Guff games; filter by host in the dashboard) --><script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "bfe1babe08394825950f1a03beef4182"}'></script>
 </head>
 <body>

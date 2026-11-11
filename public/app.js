@@ -303,9 +303,35 @@
     if (mode === "daily") clockStart(day.date, !!(saved && Array.isArray(saved.tiles)));
   }
 
+  // ── Eras (11 Nov 2026) ──────────────────────────────────────────────────
+  // Each weekday has its own gaming era: Monday bat and ball through Sunday
+  // shooter HUD. The era follows the grid's date, so everyone sees the same
+  // look on the same grid. The inline script in index.html sets it before
+  // first paint; themes.css does the skins. Layout, level colours and the
+  // four buttons (Mix, Clear, Hold, Fire) never change; only these words do.
+  const ERA_WORDS = {
+    mon: { lives: "Balls", miss: "Out", cheer: "Point won" },
+    tue: { lives: "Lives", miss: "Miss", cheer: "High score" },
+    wed: { lives: "Lives", miss: "Miss", cheer: "" },
+    thu: { lives: "Lives", miss: "Nonsense in BASIC", cheer: "0 OK, 0:1" },
+    fri: { lives: "Lives", miss: "Ouch", cheer: "Stage clear" },
+    sat: { lives: "Attempts", miss: "Foul", cheer: "Qualified" },
+    sun: { lives: "Ammo", miss: "Missed", cheer: "Mission complete" },
+  };
+  let era = { key: "wed", name: "vector arcade" };
+  function applyEra() {
+    if (window.GroupieEra) era = GroupieEra.apply(mode === "builtin" ? null : day && day.date);
+  }
+  function eraWords() { return ERA_WORDS[era.key] || ERA_WORDS.wed; }
+  function missToast(oneAway) {
+    if (era.key === "wed") return oneAway ? "Missed by one" : "Miss";
+    return eraWords().miss + (oneAway ? " · one away" : "");
+  }
+
   function updateIssueLine() {
-    if (mode === "builtin") issueLine.textContent = "specimen grid";
-    else issueLine.textContent = `grid № ${day.number} · ${prettyDate(day.date)}`;
+    applyEra();
+    if (mode === "builtin") issueLine.textContent = `specimen grid · ${era.name}`;
+    else issueLine.textContent = `grid № ${day.number} · ${prettyDate(day.date)} · ${era.name}`;
   }
 
   function groupOf(word) {
@@ -376,6 +402,12 @@
     fitTiles();
   }
 
+  // Each era's font arrives after the first paint, so measure the tiles
+  // again once it has loaded.
+  if (document.fonts && document.fonts.addEventListener) {
+    document.fonts.addEventListener("loadingdone", () => fitTiles());
+  }
+
   // Shrink any tile whose longest word still overflows, instead of letting
   // it break mid-word (BLACKADDER must never become BLACKADDE-R).
   function fitTiles() {
@@ -422,7 +454,7 @@
     return `
       <div class="dock">
         <div class="meters">
-          <div class="lives">Lives ${Array.from({ length: LIVES }, (_, i) =>
+          <div class="lives">${eraWords().lives} ${Array.from({ length: LIVES }, (_, i) =>
             `<span class="life ${i < LIVES - lives ? "spent" : ""}"></span>`).join("")}
           </div>
           <div class="scorebox">Score <span class="n">${runningScore()}</span></div>
@@ -586,7 +618,7 @@
     const dock = app.querySelector(".lives");
     if (dock) {
       const spent = LIVES - lives;
-      dock.innerHTML = `Lives ${Array.from({ length: LIVES }, (_, i) =>
+      dock.innerHTML = `${eraWords().lives} ${Array.from({ length: LIVES }, (_, i) =>
         `<span class="life ${i < spent - 1 ? "spent" : i === spent - 1 ? "dying" : ""}"></span>`).join("")}`;
     }
 
@@ -598,7 +630,7 @@
       return;
     }
 
-    toast(best === 3 ? "Missed by one" : "Miss");
+    toast(missToast(best === 3));
     saveProgress();
     setTimeout(settle, 450);
     });
@@ -678,6 +710,7 @@
     if (!slot) return;
     slot.innerHTML = `
       <div class="results">
+        ${won && eraWords().cheer ? `<div class="era-cheer">${era.key === "sat" && score === SCORE_MAX ? "Gold" : eraWords().cheer}</div>` : ""}
         <div class="verdict ${won ? "" : "lost"}">${verdict}</div>
         <div class="scoreline ${score === SCORE_MAX ? "full" : ""}">score ${score}<span class="of">/${SCORE_MAX}</span></div>
         ${ms !== null ? `<div class="timeline">time ${clockText(ms)}</div>` : ""}

@@ -1,0 +1,318 @@
+/* Groupie eras (11 Nov 2026): a different gaming era each weekday.
+   Wednesday is the original vector arcade and has no overrides here.
+   <html data-era="mon|tue|wed|thu|fri|sat|sun">, plus data-alt on every
+   day except Wednesday. Rules for all six:
+   - the layout, the four level colours and the four buttons never change;
+   - solved groups are FILLED with their level colour and dark text, so they
+     read on any background;
+   - Fire is always the loudest button.
+   ?era=sat (any day) previews an era on the live site. */
+
+/* ── Shared by the six alternative eras ────────────────────────────────── */
+
+[data-alt] body { background-image: none; }
+[data-alt] body::after { display: none; }
+[data-alt] .masthead, [data-alt] .results { box-shadow: none; }
+
+[data-alt] .masthead h1, [data-alt] .masthead .strap, [data-alt] .tile.selected,
+[data-alt] .verdict, [data-alt] .verdict.lost, [data-alt] .scoreline, [data-alt] .scoreline.full,
+[data-alt] .streak, [data-alt] .scorebox .n, [data-alt] .subscribe .label,
+[data-alt] button.pill.loud, [data-alt] .archive-list a:hover { text-shadow: none; }
+
+[data-alt] .tile.selected, [data-alt] .solved-band, [data-alt] .banner, [data-alt] .toast,
+[data-alt] button.pill:hover:not(:disabled), [data-alt] a.ghost:hover, [data-alt] button.ghost:hover,
+[data-alt] button.pill.loud, [data-alt] button.pill.loud:hover:not(:disabled), [data-alt] .held-band.on,
+[data-alt] .subscribe form.filled button.go, [data-alt] .subscribe input:focus { box-shadow: none; }
+
+[data-alt] .masthead h1 { color: var(--title, var(--line)); }
+
+/* GuffBot's home on the alternative days: beside the strap line. */
+[data-alt] .masthead .strap::before {
+  content: "";
+  display: inline-block;
+  width: 2.2em;
+  height: 2.2em;
+  vertical-align: middle;
+  margin-right: 0.6em;
+  background: url("guffbot.webp") center / contain no-repeat;
+  filter: var(--gb-filter, none);
+}
+
+/* Solved groups: filled, dark text, same four colours every day. */
+[data-alt] .solved-band { border-color: var(--band-edge, transparent); border-width: var(--band-bw, 2px); border-radius: var(--radius, 0); }
+[data-alt] .solved-band.d0 { background: var(--g0); color: #1a0f00; }
+[data-alt] .solved-band.d1 { background: var(--g1); color: #112200; }
+[data-alt] .solved-band.d2 { background: var(--g2); color: #00221c; }
+[data-alt] .solved-band.d3 { background: var(--g3); color: #1e0006; }
+[data-alt] .solved-band .gwords { color: inherit; }
+[data-alt] .solved-band .tier { opacity: 0.85; }
+
+[data-alt] .banner { background: var(--g0); color: #1a0f00; border-color: var(--g0); }
+[data-alt] .toast { background: var(--toast-bg, var(--text)); color: var(--toast-fg, var(--bg)); border-color: var(--toast-edge, var(--toast-bg, var(--text))); }
+
+[data-alt] .tile {
+  background: var(--tile-bg);
+  border-color: var(--tile-edge);
+  border-width: var(--tile-bw, 2px);
+  color: var(--tile-fg);
+  border-radius: var(--radius, 0);
+}
+[data-alt] .tile:hover { border-color: var(--sel-edge); }
+[data-alt] .tile.selected { background: var(--sel-bg); border-color: var(--sel-edge); color: var(--sel-fg); }
+
+[data-alt] .held-band { background: var(--tile-bg); border-radius: var(--radius, 0); }
+[data-alt] .held-band.on { background: var(--sel-bg); border-color: var(--sel-edge); }
+[data-alt] .held-band.on .held-words, [data-alt] .held-band.on .held-tag { color: var(--sel-fg); }
+[data-alt] .held-x { background: var(--btn-bg, transparent); border-color: var(--btn-edge, var(--line-dim)); color: var(--btn-fg, var(--text)); border-radius: var(--radius, 0); }
+
+[data-alt] button.pill, [data-alt] a.ghost, [data-alt] button.ghost {
+  background: var(--btn-bg, transparent);
+  border-color: var(--btn-edge, var(--line-dim));
+  color: var(--btn-fg, var(--text));
+  border-radius: var(--btn-radius, var(--radius, 0));
+}
+[data-alt] button.pill:hover:not(:disabled), [data-alt] a.ghost:hover, [data-alt] button.ghost:hover { border-color: var(--line); color: var(--btn-hover, var(--line)); }
+[data-alt] button.pill.hold:not(:disabled) { border-style: dashed; border-color: var(--line); color: var(--hold-fg, var(--line)); }
+[data-alt] button.pill.loud, [data-alt] button.pill.loud:hover:not(:disabled) {
+  background: var(--fire-bg);
+  color: var(--fire-fg);
+  border-color: var(--fire-edge, var(--fire-bg));
+}
+[data-alt] button.pill.loud:disabled { background: var(--btn-bg, transparent); color: var(--text-dim); border-color: var(--line-dim); }
+
+[data-alt] .verdict, [data-alt] .verdict.lost { color: var(--text); }
+[data-alt] .scoreline.full { color: var(--hot); }
+[data-alt] .subscribe { background: var(--tile-bg); border-radius: var(--radius, 0); }
+[data-alt] .subscribe input { border-radius: var(--radius, 0); min-width: 0; }
+[data-alt] .life:not(.spent):not(.dying) { filter: none; }
+
+[data-alt] .era-cheer {
+  font-family: var(--px);
+  font-size: var(--fs-m);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hot);
+  margin-bottom: 10px;
+}
+
+/* Type sizes: each era's fonts have their own widths. */
+[data-alt] .masthead .issue, [data-alt] .solved-band .tier, [data-alt] .held-tag, [data-alt] .lives,
+[data-alt] .scorebox, [data-alt] .timeline, [data-alt] .streak, [data-alt] .stat .l,
+[data-alt] .subscribe .label, [data-alt] .colophon { font-size: var(--fs-s); }
+[data-alt] .masthead .strap, [data-alt] .banner, [data-alt] .solved-band .gname, [data-alt] button.pill,
+[data-alt] a.ghost, [data-alt] button.ghost, [data-alt] .toast, [data-alt] .scoreline, [data-alt] .held-x { font-size: var(--fs-m); }
+[data-alt] .tile { font-size: var(--fs-tile); }
+[data-alt] .tile.len-m { font-size: calc(var(--fs-tile) * 0.87); }
+[data-alt] .tile.len-l { font-size: calc(var(--fs-tile) * 0.74); }
+[data-alt] .brief, [data-alt] .subline, [data-alt] .solved-band .gwords, [data-alt] .held-words,
+[data-alt] .subscribe p, [data-alt] .loading-note, [data-alt] .archive-list a { font-size: var(--fs-body); }
+[data-alt] .verdict { font-size: var(--fs-l); }
+[data-alt] .colophon { line-height: 2.2; }
+[data-alt] .stat .n { font-size: var(--fs-l2); }
+
+/* ── Monday · bat and ball (1972) ──────────────────────────────────────── */
+
+[data-era="mon"] {
+  --bg: #000000; --line: #f2f2f2; --line-dim: #8c8c8c; --text: #f2f2f2; --text-dim: #ababab; --hot: #f2f2f2; --title: #f2f2f2;
+  --px: "Silkscreen", monospace; --vt: "Silkscreen", monospace;
+  --tile-bg: #000000; --tile-edge: #f2f2f2; --tile-fg: #f2f2f2; --tile-bw: 3px;
+  --sel-bg: #f2f2f2; --sel-edge: #f2f2f2; --sel-fg: #000000;
+  --fire-bg: #f2f2f2; --fire-fg: #000000; --btn-bg: #000000; --btn-edge: #f2f2f2;
+  --gb-filter: grayscale(1) contrast(1.8) brightness(1.3);
+  --fs-s: 0.6rem; --fs-m: 0.68rem; --fs-tile: 0.8rem; --fs-body: 0.8rem; --fs-l: 1.1rem; --fs-l2: 1rem;
+}
+[data-era="mon"] body::after { display: block; }
+/* The net down the middle; anything with words on it gets a black backing. */
+[data-era="mon"] body {
+  background-image: linear-gradient(#262626 55%, transparent 55%);
+  background-size: 4px 26px;
+  background-position: 50% 0;
+  background-repeat: repeat-y;
+}
+[data-era="mon"] .masthead, [data-era="mon"] .brief, [data-era="mon"] .meters > *, [data-era="mon"] .results,
+[data-era="mon"] .colophon, [data-era="mon"] .archive-list, [data-era="mon"] .loading-note { background-color: #000000; }
+[data-era="mon"] .masthead h1, [data-era="mon"] .tile.selected { font-weight: 700; }
+[data-era="mon"] .meters > * { padding: 2px 6px; }
+[data-era="mon"] .life::before { background: #f2f2f2; width: 0.3em; height: 1.1em; vertical-align: -0.28em; }
+
+/* ── Tuesday · woodgrain console (1977) ────────────────────────────────── */
+
+[data-era="tue"] {
+  --bg: #000000; --line: #fcfc68; --line-dim: #7a7a7a; --text: #f4ecd2; --text-dim: #c8a46a; --hot: #fc9c54; --title: #e9e9e9;
+  --px: "Jersey 25", monospace; --vt: "Jersey 15", monospace;
+  --tile-bg: #3c3c9c; --tile-edge: #3c3c9c; --tile-fg: #fcfc68;
+  --sel-bg: #f4ecd2; --sel-edge: #f4ecd2; --sel-fg: #000000;
+  --fire-bg: #d8221c; --fire-fg: #ffffff; --btn-bg: #1c1c1c; --btn-edge: #7a7a7a; --btn-fg: #e9e9e9;
+  --gb-filter: saturate(1.6) contrast(1.2);
+  --fs-s: 0.9rem; --fs-m: 1.05rem; --fs-tile: 1.15rem; --fs-body: 1.2rem; --fs-l: 2rem; --fs-l2: 1.6rem;
+}
+[data-era="tue"] body::after { display: block; }
+[data-era="tue"] .masthead {
+  background: repeating-linear-gradient(176deg, #5a3416 0 6px, #6e4120 6px 9px, #4b2a10 9px 14px, #7a4a26 14px 20px);
+  border-bottom: 6px solid #1a1a1a;
+  padding: 14px 12px 12px;
+}
+[data-era="tue"] .masthead h1 {
+  display: inline-block;
+  background: repeating-linear-gradient(90deg, #1c1c1c 0 6px, #2e2e2e 6px 9px);
+  padding: 10px 18px 6px;
+  margin: 10px 0;
+}
+[data-era="tue"] .masthead .issue, [data-era="tue"] .masthead .strap { color: #f4ecd2; }
+[data-era="tue"] .life::before { background: #fcfc68; width: 0.8em; height: 0.8em; vertical-align: -0.05em; }
+
+/* ── Thursday · 8-bit home micro (1983) ────────────────────────────────── */
+
+[data-era="thu"] {
+  --bg: #d7d7d7; --line: #0000c8; --line-dim: #000000; --text: #000000; --text-dim: #333333; --hot: #b00000; --title: #000000;
+  --px: "Sixtyfour", monospace; --vt: "Micro 5", monospace;
+  --tile-bg: #d7d7d7; --tile-edge: #000000; --tile-fg: #000000; --tile-bw: 3px;
+  --sel-bg: #000000; --sel-edge: #000000; --sel-fg: #d7d7d7;
+  --fire-bg: #0000c8; --fire-fg: #ffffff; --fire-edge: #000000; --btn-bg: #d7d7d7; --btn-edge: #000000; --btn-fg: #000000;
+  --band-edge: #000000; --band-bw: 3px;
+  --toast-bg: #000000; --toast-fg: #d7d7d7;
+  --fs-s: 0.42rem; --fs-m: 0.5rem; --fs-tile: 1.6rem; --fs-body: 1.5rem; --fs-l: 0.95rem; --fs-l2: 0.85rem;
+}
+/* The loading stripes round the edge of the screen. */
+html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px, #d7d700 7px 12px, #d70000 12px 19px, #00d7d7 19px 24px); }
+[data-era="thu"] body { background: #d7d7d7; margin: 12px; min-height: calc(100vh - 24px); }
+[data-era="thu"] .tile { line-height: 0.8; }
+[data-era="thu"] .masthead { border-bottom: 3px solid #000000; }
+[data-era="thu"] .life::before {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* ── Friday · 16-bit (1991) ────────────────────────────────────────────── */
+
+[data-era="fri"] {
+  --bg: #3a8cff; --line: #ffd400; --line-dim: #ffffff; --text: #ffffff; --text-dim: #071a45; --hot: #ffd400; --title: #ffd400;
+  --px: "Pixelify Sans", sans-serif; --vt: "Pixelify Sans", sans-serif;
+  --tile-bg: #1b1f6b; --tile-edge: #ffffff; --tile-fg: #ffffff; --tile-bw: 3px; --radius: 6px;
+  --sel-bg: #ffd400; --sel-edge: #ffffff; --sel-fg: #1b1f6b;
+  --fire-bg: #ffd400; --fire-fg: #1b1f6b; --fire-edge: #000000; --btn-bg: #1b1f6b; --btn-edge: #ffffff; --btn-fg: #ffffff; --btn-hover: #ffd400;
+  --band-edge: #ffffff; --band-bw: 3px;
+  --toast-bg: #1b1f6b; --toast-fg: #ffd400; --toast-edge: #ffffff;
+  --gb-filter: drop-shadow(3px 3px 0 #000000);
+  --fs-s: 0.7rem; --fs-m: 0.8rem; --fs-tile: 1rem; --fs-body: 1rem; --fs-l: 1.5rem; --fs-l2: 1.3rem;
+}
+/* A strip of chequered ground along the bottom of the page. */
+[data-era="fri"] body {
+  min-height: 100vh;
+  padding-bottom: 40px;
+  background-image: repeating-conic-gradient(#2fb53c 0% 25%, #1f8f2c 0% 50%);
+  background-size: 32px 32px;
+  background-repeat: repeat-x;
+  background-position: 0 100%;
+}
+[data-era="fri"] .masthead { border-bottom: 3px solid #ffffff; }
+[data-era="fri"] .masthead h1 {
+  font-weight: 700;
+  text-shadow: 3px 0 0 #000, -3px 0 0 #000, 0 3px 0 #000, 0 -3px 0 #000, 6px 6px 0 #b4005a;
+}
+[data-era="fri"] .masthead .issue, [data-era="fri"] .lives, [data-era="fri"] .scorebox, [data-era="fri"] .tile,
+[data-era="fri"] button.pill, [data-era="fri"] .solved-band .gname, [data-era="fri"] .verdict { font-weight: 700; }
+[data-era="fri"] .tile, [data-era="fri"] .tile.selected, [data-era="fri"] .solved-band, [data-era="fri"] button.pill,
+[data-era="fri"] button.pill.loud, [data-era="fri"] button.pill.loud:hover:not(:disabled) { box-shadow: 4px 4px 0 #000000; }
+[data-era="fri"] button.pill:disabled { box-shadow: none; }
+[data-era="fri"] .scorebox .n { color: #ffffff; }
+[data-era="fri"] .life::before {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-0.5 -0.5 8 7' shape-rendering='crispEdges'%3E%3Cpath fill='%23ff2a4a' stroke='%23000' stroke-width='0.5' d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* ── Saturday · sports arcade (1983) ───────────────────────────────────── */
+
+[data-era="sat"] {
+  --bg: #2e7d32; --line: #ffe23a; --line-dim: #f4f4ee; --text: #ffffff; --text-dim: #eef7e4; --hot: #ffb21c; --title: #ffffff;
+  --px: "Tiny5", monospace; --vt: "Tiny5", monospace;
+  --tile-bg: #f4f4ee; --tile-edge: #1a1a1a; --tile-fg: #1a1a1a; --tile-bw: 3px; --radius: 4px;
+  --sel-bg: #ffe23a; --sel-edge: #1a1a1a; --sel-fg: #1a1a1a;
+  --fire-bg: #ff7a1c; --fire-fg: #1a1a1a; --fire-edge: #5a2a00; --btn-bg: #3d6fd6; --btn-edge: #0d1f4a; --btn-fg: #ffffff; --btn-hover: #ffe23a; --btn-radius: 24px;
+  --band-edge: #1a1a1a; --band-bw: 3px; --hold-fg: #ffe23a;
+  --toast-bg: #0c0c0c; --toast-fg: #ffb21c; --toast-edge: #ffb21c;
+  --fs-s: 0.75rem; --fs-m: 0.85rem; --fs-tile: 1.05rem; --fs-body: 1rem; --fs-l: 1.6rem; --fs-l2: 1.4rem;
+}
+/* Mown infield. */
+[data-era="sat"] body { background-image: repeating-linear-gradient(90deg, #2e7d32 0 32px, #348a38 32px 64px); }
+/* Scoreboard masthead, with the crowd in the stands above it. */
+[data-era="sat"] .masthead { background: #0c0c0c; border-bottom: 4px solid #6b5a3a; padding: 12px 12px 14px; }
+[data-era="sat"] .masthead::before {
+  content: "";
+  display: block;
+  height: 44px;
+  margin: -12px -12px 12px;
+  border-bottom: 4px solid #6b5a3a;
+  background-color: #3a2a4a;
+  background-image: radial-gradient(circle, #f2c14e 3px, transparent 3.6px), radial-gradient(circle, #e85d75 3px, transparent 3.6px), radial-gradient(circle, #6ec6ff 3px, transparent 3.6px), radial-gradient(circle, #f4f4ee 3px, transparent 3.6px);
+  background-size: 22px 14px, 26px 14px, 30px 14px, 18px 14px;
+  background-position: 0 0, 9px 7px, 15px 3px, 4px 10px;
+}
+[data-era="sat"] .masthead .issue { color: #9a9a9a; }
+[data-era="sat"] .masthead h1 { text-shadow: 3px 3px 0 #d6312a; }
+[data-era="sat"] .meters { background: #0c0c0c; padding: 8px 12px; border-radius: 4px; }
+[data-era="sat"] .lives, [data-era="sat"] .scorebox { color: #ffffff; }
+[data-era="sat"] .scorebox .n, [data-era="sat"] .stat .n, [data-era="sat"] .scoreline { font-family: "Doto", monospace; font-weight: 900; }
+[data-era="sat"] .scorebox .n { color: #ffb21c; }
+[data-era="sat"] .stat .n, [data-era="sat"] .scoreline { color: #ffffff; }
+[data-era="sat"] .held-band { background: rgba(10, 40, 12, 0.6); }
+[data-era="sat"] .subscribe { background: #0c0c0c; border-color: #6b5a3a; }
+[data-era="sat"] button.pill, [data-era="sat"] button.pill.loud { box-shadow: 0 4px 0 #0d1f4a; }
+[data-era="sat"] button.pill.loud { box-shadow: 0 4px 0 #5a2a00; }
+[data-era="sat"] button.pill:disabled { box-shadow: none; }
+/* The running track along the bottom, lane lines and all. */
+[data-era="sat"] .colophon {
+  background-color: #b4442a;
+  background-image: repeating-linear-gradient(180deg, transparent 0 24px, #f4f4ee 24px 26px);
+  border-top: 3px solid #f4f4ee;
+  padding: 30px 8px;
+  margin-left: -14px;
+  margin-right: -14px;
+  color: #ffffff;
+}
+[data-era="sat"] .colophon a { color: #ffffff; border-color: #ffffff; background: #b4442a; padding: 0 3px; }
+[data-era="sat"] .life::before { background: #3be36b; border: 2px solid #0b3a18; border-radius: 50%; width: 0.75em; height: 0.75em; vertical-align: -0.05em; box-sizing: border-box; }
+
+/* ── Sunday · shooter HUD (2004) ───────────────────────────────────────── */
+
+[data-era="sun"] {
+  --bg: #11140f; --line: #ffffff; --line-dim: #4a5a40; --text: #d9e4c8; --text-dim: #a8c090; --hot: #a8c090; --title: #e8f0dc;
+  --px: "Black Ops One", sans-serif; --vt: "Rajdhani", sans-serif;
+  --tile-bg: rgba(20, 26, 18, 0.9); --tile-edge: #4a5a40; --tile-fg: #d9e4c8; --tile-bw: 1px;
+  --sel-bg: #34402c; --sel-edge: #7f9a68; --sel-fg: #ffffff;
+  --fire-bg: #d9e4c8; --fire-fg: #11140f; --btn-bg: transparent; --btn-edge: #7f9a68; --btn-fg: #d9e4c8;
+  --toast-bg: rgba(0, 0, 0, 0.88); --toast-fg: #d9e4c8; --toast-edge: #7f9a68;
+  --gb-filter: sepia(1) hue-rotate(50deg) saturate(1.4);
+  --fs-s: 0.62rem; --fs-m: 0.78rem; --fs-tile: 1.1rem; --fs-body: 1.05rem; --fs-l: 1.4rem; --fs-l2: 1.2rem;
+  --bk: #a8c090;
+}
+[data-era="sun"] body {
+  background-image: linear-gradient(rgba(168, 192, 144, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(168, 192, 144, 0.06) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+[data-era="sun"] .masthead { border-bottom: 1px solid #7f9a68; }
+[data-era="sun"] .tile { position: relative; font-weight: 700; letter-spacing: 0.06em; }
+/* Target brackets in each corner; white and heavier once locked on. */
+[data-era="sun"] .tile::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  pointer-events: none;
+  --t: 2px;
+  background:
+    linear-gradient(var(--bk), var(--bk)) top left / 9px var(--t) no-repeat,
+    linear-gradient(var(--bk), var(--bk)) top left / var(--t) 9px no-repeat,
+    linear-gradient(var(--bk), var(--bk)) top right / 9px var(--t) no-repeat,
+    linear-gradient(var(--bk), var(--bk)) top right / var(--t) 9px no-repeat,
+    linear-gradient(var(--bk), var(--bk)) bottom left / 9px var(--t) no-repeat,
+    linear-gradient(var(--bk), var(--bk)) bottom left / var(--t) 9px no-repeat,
+    linear-gradient(var(--bk), var(--bk)) bottom right / 9px var(--t) no-repeat,
+    linear-gradient(var(--bk), var(--bk)) bottom right / var(--t) 9px no-repeat;
+}
+[data-era="sun"] .tile.selected::before { --bk: #ffffff; --t: 3px; }
+[data-era="sun"] .brief, [data-era="sun"] .subline, [data-era="sun"] .held-words, [data-era="sun"] .solved-band .gwords { font-weight: 600; }
+[data-era="sun"] .scorebox .n, [data-era="sun"] .stat .n, [data-era="sun"] .timeline { font-family: "Share Tech Mono", monospace; }
+[data-era="sun"] .life::before {
+  width: 0.45em;
+  height: 1.2em;
+  vertical-align: -0.3em;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 24'%3E%3Cpath d='M1 8 Q4.5 0 8 8 V22 H1 Z' fill='%23d9c27a'/%3E%3Crect x='1' y='17' width='7' height='5' fill='%238a6a2a'/%3E%3C/svg%3E") center / contain no-repeat;
+}
