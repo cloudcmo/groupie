@@ -297,8 +297,43 @@ async function serveSources(url, request, env) {
 //   off:   the ones they switched off (not suggested; still playable)
 //   known: the games that existed when they saved, so a game launched later
 //          can switch itself on for everyone once
-// GET  /api/prefs?id=           → { prefs: {order, off, known, at} | null }
-// POST /api/prefs {id, order, off, known} → { ok: true }
+//   classic: (v2, 11 Nov 2026) the classic games they chose to keep in their
+//          daily games. Hexadec, Spellbound and Guffinoes left the daily list
+//          that day; a classic game is only suggested if it is in here.
+// GET  /api/prefs?id=           → { prefs: {v, order, off, known, classic, at} | null }
+// POST /api/prefs {id, order, off, known, classic} → { ok: true }
+//
+// Moving old prefs over (Carl, 11 Nov 2026): a player keeps a classic game only if
+// it was switched on in their saved list AND they played it in the last two weeks
+// (docket ticks or league scores, under this id or any id with their initials).
+// Done once, the first time their prefs are read; the answer is saved back.
+const CLASSIC_GAMES = ["hexadec", "spellbound", "guffinoes"];
+async function migrateClassic(env, prefs, id, initials) {
+  const known = (prefs.known && prefs.known.length) ? prefs.known : (prefs.order || []);
+  const off = prefs.off || [];
+  const wasOn = CLASSIC_GAMES.filter((k) => !(off.includes(k) && known.includes(k)));
+  let keep = [];
+  if (wasOn.length) {
+    const ids = [id];
+    if (initials) {
+      const { results } = await env.DB.prepare("SELECT id FROM players WHERE initials = ? LIMIT 40").bind(initials).all();
+      for (const r of results || []) if (r.id && !ids.includes(r.id)) ids.push(r.id);
+    }
+    const since = addDays(todayISO(), -14);
+    const marks = ids.map(() => "?").join(",");
+    const played = new Set();
+    const dk = await env.DB.prepare(
+      "SELECT MAX(hexadec) AS hexadec, MAX(spellbound) AS spellbound, MAX(guffinoes) AS guffinoes FROM docket WHERE id IN (" + marks + ") AND date >= ?"
+    ).bind(...ids, since).first();
+    for (const k of CLASSIC_GAMES) if (dk && dk[k]) played.add(k);
+    const ls = await env.DB.prepare(
+      "SELECT DISTINCT game FROM league_scores WHERE id IN (" + marks + ") AND date >= ? AND game IN ('hexadec','spellbound','guffinoes')"
+    ).bind(...ids, since).all();
+    for (const r of ls.results || []) played.add(r.game);
+    keep = wasOn.filter((k) => played.has(k));
+  }
+  return { v: 2, order: prefs.order || [], off: off.filter((k) => !CLASSIC_GAMES.includes(k)), known: prefs.known || [], classic: keep };
+}
 let prefsTableReady = false;
 async function ensurePrefsTable(env) {
   if (prefsTableReady) return;
@@ -333,6 +368,19 @@ async function servePrefs(url, request, env) {
     if (!row) return docketJson({ prefs: null });
     let prefs = null;
     try { prefs = JSON.parse(row.prefs); } catch { prefs = null; }
+    if (prefs && prefs.v !== 2) {
+      // Saved before the classic games (11 Nov 2026): move over once and save back,
+      // keeping the old timestamp so nothing else about which row wins changes.
+      try {
+        const moved = await migrateClassic(env, prefs, id, p && p.initials);
+        await env.DB.prepare(
+          "UPDATE guff_prefs SET prefs = ? WHERE k IN (" + keys.map(() => "?").join(",") + ") AND prefs = ?"
+        ).bind(JSON.stringify(moved), ...keys, row.prefs).run();
+        prefs = moved;
+      } catch (err) {
+        console.error("Classic prefs move failed:", err);
+      }
+    }
     if (prefs) prefs.at = row.at;
     return docketJson({ prefs });
   }
@@ -343,6 +391,13 @@ async function servePrefs(url, request, env) {
     const id = typeof body.id === "string" ? body.id : "";
     if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
     const prefs = { order: cleanKeys(body.order, 30), off: cleanKeys(body.off, 30), known: cleanKeys(body.known, 30) };
+    // A hub from before 11 Nov 2026 (cached in someone's browser) sends no classic list:
+    // save the old shape, and the next read moves it over by the two-week rule.
+    if (Array.isArray(body.classic)) {
+      prefs.v = 2;
+      prefs.classic = cleanKeys(body.classic, 10).filter((k) => CLASSIC_GAMES.includes(k));
+      prefs.off = prefs.off.filter((k) => !CLASSIC_GAMES.includes(k));
+    }
     const at = new Date().toISOString();
     const text = JSON.stringify(prefs);
     const p = await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first();
