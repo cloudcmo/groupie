@@ -380,7 +380,7 @@
     app.innerHTML = `
       ${mode === "archive" ? `<div class="banner">back grid — doesn't touch your streak</div>` : ""}
       ${mode === "watch" ? `<div class="banner">replay — ${esc(watchWho)}'s grid</div>` : ""}
-      ${solved.length === 0 && !finished && mode !== "watch" ? `<p class="brief">Sixteen words. Four hidden groups. Pick four, then fire, or hold them to fire later. Hard groups early score big, so save the easiest for last.</p>` : ""}
+      ${solved.length === 0 && !finished && mode !== "watch" ? `<p class="brief">Find four groups of four.</p>` : ""}
       <div class="board" id="board">
         ${bands}
         ${held.map(heldHTML).join("")}
@@ -481,7 +481,13 @@
           <button class="pill" id="deselect-btn">Clear</button>
           <button class="pill hold" id="hold-btn" disabled>Hold</button>
           <button class="pill loud" id="submit-btn" disabled>Fire</button>
-        </div>`}
+        </div>
+        <details class="howto">
+          <summary>How to play</summary>
+          <p>Sixteen words hide four groups of four. Pick four tiles and press Fire. Wrong guesses cost a life, and you have four.</p>
+          <p>Spotted a group but want to save it? Pick it and press Hold. It parks above the grid unchecked, so you can fire it later, or tap × to put it back.</p>
+          <p>Order scores. Your first correct fire banks its level (1 to 4) times three, the second times two, the third times one. The last group is free, and leaving the easiest one till last adds 4. Hardest first, easiest last, is the full 24.</p>
+        </details>`}
       </div>
     `;
   }

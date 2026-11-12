@@ -120,6 +120,24 @@ body::after {
 .era-toggle:hover { color: var(--line); border-color: var(--line); }
 .era-toggle[hidden] { display: none; }
 
+/* How to play, folded away under the controls (12 Nov 2026). */
+.howto { width: 100%; max-width: 440px; text-align: center; }
+.howto summary {
+  display: inline-block;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--px);
+  font-size: 0.45rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px dotted var(--text-dim);
+  padding: 6px 2px;
+}
+.howto summary::-webkit-details-marker { display: none; }
+.howto summary:hover { color: var(--line); border-color: var(--line); }
+.howto p { text-align: left; color: var(--text-dim); font-size: 1.05rem; line-height: 1.35; margin: 10px 0 0; }
+
 /* ── Board ────────────────────────────────────────────────────────────── */
 
 .brief {

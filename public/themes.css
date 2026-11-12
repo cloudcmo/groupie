@@ -113,7 +113,10 @@
    plainer reading face (--read), falling back to its body font. */
 [data-alt] .tile, [data-alt] .brief, [data-alt] .subline, [data-alt] .solved-band .gwords,
 [data-alt] .held-words, [data-alt] .subscribe p, [data-alt] .subscribe input,
-[data-alt] .archive-list a, [data-alt] .loading-note { font-family: var(--read, var(--vt)); }
+[data-alt] .archive-list a, [data-alt] .loading-note, [data-alt] .howto p { font-family: var(--read, var(--vt)); }
+[data-alt] .howto summary { font-size: var(--fs-s); }
+[data-alt] .howto p { font-size: calc(var(--fs-body) * 0.9); }
+[data-era="sat"] .howto p { color: #ffffff; }
 [data-alt] .tile { font-weight: var(--tile-weight, 400); }
 [data-alt] .era-toggle { font-size: var(--fs-s); }
 [data-era="tue"] .era-toggle { color: #f4ecd2; border-color: #f4ecd2; }
@@ -144,6 +147,7 @@
 [data-era="mon"] .colophon, [data-era="mon"] .archive-list, [data-era="mon"] .loading-note { background-color: #000000; }
 [data-era="mon"] .masthead h1 { font-weight: 700; }
 [data-era="mon"] .meters > * { padding: 2px 6px; }
+[data-era="mon"] .howto { background-color: #000000; }
 [data-era="mon"] .life::before { background: #f2f2f2; width: 0.3em; height: 1.1em; vertical-align: -0.28em; }
 
 /* ── Tuesday · woodgrain console (1977) ────────────────────────────────── */
@@ -186,7 +190,9 @@
 }
 /* The loading stripes round the edge of the screen. */
 html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px, #d7d700 7px 12px, #d70000 12px 19px, #00d7d7 19px 24px); }
-[data-era="thu"] body { background: #d7d7d7; margin: 12px; min-height: calc(100vh - 24px); }
+[data-era="thu"] body { background: #d7d7d7; margin: 9px; min-height: calc(100vh - 18px); }
+[data-era="thu"] .brief { font-size: 0.9rem; }
+[data-era="thu"] .controls button.pill { padding-left: 9px; padding-right: 9px; }
 [data-era="thu"] .masthead h1 { font-family: "Sixtyfour", monospace; }
 [data-era="thu"] .masthead { border-bottom: 3px solid #000000; }
 [data-era="thu"] .life::before {
