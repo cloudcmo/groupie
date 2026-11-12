@@ -107,6 +107,16 @@
 [data-alt] .brief, [data-alt] .subline, [data-alt] .solved-band .gwords, [data-alt] .held-words,
 [data-alt] .subscribe p, [data-alt] .loading-note, [data-alt] .archive-list a { font-size: var(--fs-body); }
 [data-alt] .verdict { font-size: var(--fs-l); }
+
+/* Legibility (12 Nov 2026): the era fonts are for the title, labels and
+   numbers. The words you have to read, tiles and sentences, use each era's
+   plainer reading face (--read), falling back to its body font. */
+[data-alt] .tile, [data-alt] .brief, [data-alt] .subline, [data-alt] .solved-band .gwords,
+[data-alt] .held-words, [data-alt] .subscribe p, [data-alt] .subscribe input,
+[data-alt] .archive-list a, [data-alt] .loading-note { font-family: var(--read, var(--vt)); }
+[data-alt] .tile { font-weight: var(--tile-weight, 400); }
+[data-alt] .era-toggle { font-size: var(--fs-s); }
+[data-era="tue"] .era-toggle { color: #f4ecd2; border-color: #f4ecd2; }
 [data-alt] .colophon { line-height: 2.2; }
 [data-alt] .stat .n { font-size: var(--fs-l2); }
 
@@ -119,7 +129,8 @@
   --sel-bg: #f2f2f2; --sel-edge: #f2f2f2; --sel-fg: #000000;
   --fire-bg: #f2f2f2; --fire-fg: #000000; --btn-bg: #000000; --btn-edge: #f2f2f2;
   --gb-filter: grayscale(1) contrast(1.8) brightness(1.3);
-  --fs-s: 0.6rem; --fs-m: 0.68rem; --fs-tile: 0.8rem; --fs-body: 0.8rem; --fs-l: 1.1rem; --fs-l2: 1rem;
+  --read: "Space Mono", monospace; --tile-weight: 700;
+  --fs-s: 0.6rem; --fs-m: 0.68rem; --fs-tile: 0.95rem; --fs-body: 0.95rem; --fs-l: 1.1rem; --fs-l2: 1rem;
 }
 [data-era="mon"] body::after { display: block; }
 /* The net down the middle; anything with words on it gets a black backing. */
@@ -131,7 +142,7 @@
 }
 [data-era="mon"] .masthead, [data-era="mon"] .brief, [data-era="mon"] .meters > *, [data-era="mon"] .results,
 [data-era="mon"] .colophon, [data-era="mon"] .archive-list, [data-era="mon"] .loading-note { background-color: #000000; }
-[data-era="mon"] .masthead h1, [data-era="mon"] .tile.selected { font-weight: 700; }
+[data-era="mon"] .masthead h1 { font-weight: 700; }
 [data-era="mon"] .meters > * { padding: 2px 6px; }
 [data-era="mon"] .life::before { background: #f2f2f2; width: 0.3em; height: 1.1em; vertical-align: -0.28em; }
 
@@ -165,18 +176,18 @@
 
 [data-era="thu"] {
   --bg: #d7d7d7; --line: #0000c8; --line-dim: #000000; --text: #000000; --text-dim: #333333; --hot: #b00000; --title: #000000;
-  --px: "Sixtyfour", monospace; --vt: "Micro 5", monospace;
+  --px: "Press Start 2P", monospace; --vt: "IBM Plex Mono", monospace; --read: "IBM Plex Mono", monospace; --tile-weight: 700;
   --tile-bg: #d7d7d7; --tile-edge: #000000; --tile-fg: #000000; --tile-bw: 3px;
   --sel-bg: #000000; --sel-edge: #000000; --sel-fg: #d7d7d7;
   --fire-bg: #0000c8; --fire-fg: #ffffff; --fire-edge: #000000; --btn-bg: #d7d7d7; --btn-edge: #000000; --btn-fg: #000000;
   --band-edge: #000000; --band-bw: 3px;
   --toast-bg: #000000; --toast-fg: #d7d7d7;
-  --fs-s: 0.42rem; --fs-m: 0.5rem; --fs-tile: 1.6rem; --fs-body: 1.5rem; --fs-l: 0.95rem; --fs-l2: 0.85rem;
+  --fs-s: 0.5rem; --fs-m: 0.55rem; --fs-tile: 1rem; --fs-body: 1.05rem; --fs-l: 0.95rem; --fs-l2: 0.85rem;
 }
 /* The loading stripes round the edge of the screen. */
 html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px, #d7d700 7px 12px, #d70000 12px 19px, #00d7d7 19px 24px); }
 [data-era="thu"] body { background: #d7d7d7; margin: 12px; min-height: calc(100vh - 24px); }
-[data-era="thu"] .tile { line-height: 0.8; }
+[data-era="thu"] .masthead h1 { font-family: "Sixtyfour", monospace; }
 [data-era="thu"] .masthead { border-bottom: 3px solid #000000; }
 [data-era="thu"] .life::before {
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -186,7 +197,7 @@ html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px
 
 [data-era="fri"] {
   --bg: #3a8cff; --line: #ffd400; --line-dim: #ffffff; --text: #ffffff; --text-dim: #071a45; --hot: #ffd400; --title: #ffd400;
-  --px: "Pixelify Sans", sans-serif; --vt: "Pixelify Sans", sans-serif;
+  --px: "Pixelify Sans", sans-serif; --vt: "Rubik", sans-serif; --read: "Rubik", sans-serif;
   --tile-bg: #1b1f6b; --tile-edge: #ffffff; --tile-fg: #ffffff; --tile-bw: 3px; --radius: 6px;
   --sel-bg: #ffd400; --sel-edge: #ffffff; --sel-fg: #1b1f6b;
   --fire-bg: #ffd400; --fire-fg: #1b1f6b; --fire-edge: #000000; --btn-bg: #1b1f6b; --btn-edge: #ffffff; --btn-fg: #ffffff; --btn-hover: #ffd400;
@@ -209,8 +220,11 @@ html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px
   font-weight: 700;
   text-shadow: 3px 0 0 #000, -3px 0 0 #000, 0 3px 0 #000, 0 -3px 0 #000, 6px 6px 0 #b4005a;
 }
-[data-era="fri"] .masthead .issue, [data-era="fri"] .lives, [data-era="fri"] .scorebox, [data-era="fri"] .tile,
-[data-era="fri"] button.pill, [data-era="fri"] .solved-band .gname, [data-era="fri"] .verdict { font-weight: 700; }
+[data-era="fri"] { --tile-weight: 700; }
+/* Pixelify's bold closes up its C (CLEAR read as OLEAR): labels stay at 500. */
+[data-era="fri"] .masthead .issue, [data-era="fri"] .lives, [data-era="fri"] .scorebox,
+[data-era="fri"] button.pill, [data-era="fri"] .solved-band .gname, [data-era="fri"] .verdict,
+[data-era="fri"] .solved-band .tier, [data-era="fri"] .held-tag, [data-era="fri"] .toast { font-weight: 500; }
 [data-era="fri"] .tile, [data-era="fri"] .tile.selected, [data-era="fri"] .solved-band, [data-era="fri"] button.pill,
 [data-era="fri"] button.pill.loud, [data-era="fri"] button.pill.loud:hover:not(:disabled) { box-shadow: 4px 4px 0 #000000; }
 [data-era="fri"] button.pill:disabled { box-shadow: none; }
@@ -223,13 +237,13 @@ html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px
 
 [data-era="sat"] {
   --bg: #2e7d32; --line: #ffe23a; --line-dim: #f4f4ee; --text: #ffffff; --text-dim: #eef7e4; --hot: #ffb21c; --title: #ffffff;
-  --px: "Tiny5", monospace; --vt: "Tiny5", monospace;
+  --px: "Tiny5", monospace; --vt: "Barlow Semi Condensed", sans-serif; --read: "Barlow Semi Condensed", sans-serif; --tile-weight: 700;
   --tile-bg: #f4f4ee; --tile-edge: #1a1a1a; --tile-fg: #1a1a1a; --tile-bw: 3px; --radius: 4px;
   --sel-bg: #ffe23a; --sel-edge: #1a1a1a; --sel-fg: #1a1a1a;
   --fire-bg: #ff7a1c; --fire-fg: #1a1a1a; --fire-edge: #5a2a00; --btn-bg: #3d6fd6; --btn-edge: #0d1f4a; --btn-fg: #ffffff; --btn-hover: #ffe23a; --btn-radius: 24px;
   --band-edge: #1a1a1a; --band-bw: 3px; --hold-fg: #ffe23a;
   --toast-bg: #0c0c0c; --toast-fg: #ffb21c; --toast-edge: #ffb21c;
-  --fs-s: 0.75rem; --fs-m: 0.85rem; --fs-tile: 1.05rem; --fs-body: 1rem; --fs-l: 1.6rem; --fs-l2: 1.4rem;
+  --fs-s: 0.8rem; --fs-m: 0.9rem; --fs-tile: 1.15rem; --fs-body: 1.1rem; --fs-l: 1.6rem; --fs-l2: 1.4rem;
 }
 /* Mown infield. */
 [data-era="sat"] body { background-image: repeating-linear-gradient(90deg, #2e7d32 0 32px, #348a38 32px 64px); }
@@ -250,7 +264,8 @@ html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px
 [data-era="sat"] .masthead h1 { text-shadow: 3px 3px 0 #d6312a; }
 [data-era="sat"] .meters { background: #0c0c0c; padding: 8px 12px; border-radius: 4px; }
 [data-era="sat"] .lives, [data-era="sat"] .scorebox { color: #ffffff; }
-[data-era="sat"] .scorebox .n, [data-era="sat"] .stat .n, [data-era="sat"] .scoreline { font-family: "Doto", monospace; font-weight: 900; }
+[data-era="sat"] .stat .n { font-family: "Doto", monospace; font-weight: 900; }
+[data-era="sat"] .scorebox .n, [data-era="sat"] .scoreline { font-family: "Barlow Semi Condensed", sans-serif; font-weight: 700; }
 [data-era="sat"] .scorebox .n { color: #ffb21c; }
 [data-era="sat"] .stat .n, [data-era="sat"] .scoreline { color: #ffffff; }
 [data-era="sat"] .held-band { background: rgba(10, 40, 12, 0.6); }
@@ -289,7 +304,8 @@ html[data-era="thu"] { background: repeating-linear-gradient(0deg, #0000d7 0 7px
   background-size: 26px 26px;
 }
 [data-era="sun"] .masthead { border-bottom: 1px solid #7f9a68; }
-[data-era="sun"] .tile { position: relative; font-weight: 700; letter-spacing: 0.06em; }
+[data-era="sun"] { --tile-weight: 700; }
+[data-era="sun"] .tile { position: relative; letter-spacing: 0.06em; }
 /* Target brackets in each corner; white and heavier once locked on. */
 [data-era="sun"] .tile::before {
   content: "";

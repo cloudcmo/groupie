@@ -60,25 +60,29 @@
   /* Eras (11 Nov 2026): a different gaming era each weekday, by the grid's
      date. Set here so the right skin and font arrive before first paint;
      app.js calls GroupieEra.apply(date) again once the grid is known (back
-     grids keep their own day's era). ?era=sat previews any day. */
+     grids keep their own day's era). ?era=sat previews any day.
+     12 Nov 2026: players can opt out to the classic look (localStorage
+     groupie_classic = "1"); the masthead link in app.js toggles it. */
   (function(){
     var E={0:["sun","shooter HUD","Black+Ops+One&family=Rajdhani:wght@600;700&family=Share+Tech+Mono"],
-      1:["mon","bat and ball","Silkscreen:wght@400;700"],
+      1:["mon","bat and ball","Silkscreen:wght@400;700&family=Space+Mono:wght@400;700"],
       2:["tue","woodgrain console","Jersey+15&family=Jersey+25"],
       3:["wed","vector arcade",""],
-      4:["thu","8-bit micro","Micro+5&family=Sixtyfour"],
-      5:["fri","16-bit","Pixelify+Sans:wght@400;500;700"],
-      6:["sat","sports arcade","Tiny5&family=Doto:wght@700;900"]};
+      4:["thu","8-bit micro","Sixtyfour&family=IBM+Plex+Mono:wght@500;700"],
+      5:["fri","16-bit","Pixelify+Sans:wght@500;700&family=Rubik:wght@600;700"],
+      6:["sat","sports arcade","Tiny5&family=Doto:wght@900&family=Barlow+Semi+Condensed:wght@500;700"]};
     var BG={sun:"#11140f",mon:"#000000",tue:"#000000",wed:"#020308",thu:"#d7d7d7",fri:"#3a8cff",sat:"#2e7d32"};
-    var loaded={}, cur=null;
-    function pick(iso){
-      var q=(location.search.match(/[?&]era=(mon|tue|wed|thu|fri|sat|sun)\b/)||[])[1];
-      if(q){ for(var k in E){ if(E[k][0]===q) return E[k]; } }
+    var loaded={}, cur=null, CK="groupie_classic";
+    function classicPref(){ try{ return localStorage.getItem(CK)==="1"; }catch(err){ return false; } }
+    function forced(){ return (location.search.match(/[?&]era=(mon|tue|wed|thu|fri|sat|sun)\b/)||[])[1]||null; }
+    function natural(iso){
       var ok=iso&&/^\d{4}-\d\d-\d\d$/.test(iso)&&iso!=="0000-00-00";
       return E[ok ? new Date(iso+"T12:00:00Z").getUTCDay() : new Date().getDay()];
     }
     function apply(iso){
-      var e=pick(iso), h=document.documentElement;
+      var nat=natural(iso), f=forced(), e=nat, h=document.documentElement;
+      if(f){ for(var k in E){ if(E[k][0]===f) e=E[k]; } }
+      else if(classicPref()) e=E[3];
       h.setAttribute("data-era",e[0]);
       if(e[0]==="wed") h.removeAttribute("data-alt"); else h.setAttribute("data-alt","");
       if(e[2]&&!loaded[e[0]]){
@@ -88,9 +92,10 @@
         document.head.appendChild(l);
       }
       var m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute("content",BG[e[0]]);
-      cur={key:e[0],name:e[1]}; return cur;
+      cur={key:e[0],name:e[1],natural:{key:nat[0],name:nat[1]},classic:!f&&classicPref(),forced:!!f}; return cur;
     }
-    window.GroupieEra={apply:apply,get:function(){return cur;}};
+    function setClassic(on){ try{ if(on) localStorage.setItem(CK,"1"); else localStorage.removeItem(CK); }catch(err){} }
+    window.GroupieEra={apply:apply,get:function(){return cur;},setClassic:setClassic};
     try{ apply(null); }catch(err){}
   })();
   </script>
@@ -102,6 +107,7 @@
       <div class="issue" id="issue-line">·</div>
       <h1>GROUPIE</h1>
       <div class="strap">your daily four play</div>
+      <button type="button" class="era-toggle" id="era-toggle" hidden></button>
     </header>
 
     <main id="app" aria-live="polite">

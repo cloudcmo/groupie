@@ -328,8 +328,24 @@
     return eraWords().miss + (oneAway ? " · one away" : "");
   }
 
+  // The opt-out (12 Nov 2026): on any day but Wednesday, a small link under
+  // the masthead switches to the classic look, and back. Saved per browser.
+  function updateEraToggle() {
+    const btn = document.getElementById("era-toggle");
+    if (!btn) return;
+    const nat = era.natural || { key: era.key, name: era.name };
+    if (era.forced || nat.key === "wed") { btn.hidden = true; return; }
+    btn.hidden = false;
+    btn.textContent = era.classic ? `try today's look: ${nat.name}` : "prefer the classic look?";
+    btn.onclick = () => {
+      GroupieEra.setClassic(!era.classic);
+      location.reload();
+    };
+  }
+
   function updateIssueLine() {
     applyEra();
+    updateEraToggle();
     if (mode === "builtin") issueLine.textContent = `specimen grid · ${era.name}`;
     else issueLine.textContent = `grid № ${day.number} · ${prettyDate(day.date)} · ${era.name}`;
   }
