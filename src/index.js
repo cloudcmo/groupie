@@ -31,6 +31,9 @@ export default {
       if (path === "/api/visit") return await serveVisit(request, env);
       if (path === "/api/lab-feedback") return await serveLabFeedback(url, request, env);
       if (path === "/api/sources") return await serveSources(url, request, env);
+      if (path === "/api/rank") return await serveRank(request, env, ctx);
+      if (path === "/api/event") return await serveEvent(request, env);
+      if (path === "/api/newsletter-snapshot") return await serveNewsletterSnapshot(request, env);
       if (path === "/api/daystats") return await serveDayStats(url, request, env);
       if (path.startsWith("/api/league")) return await serveLeague(url, request, env, path);
       if (path === "/api/generate") return await serveGenerate(request, env);
@@ -210,6 +213,125 @@ async function serveVisit(request, env) {
       "UPDATE visits SET ref = ? WHERE id = ? AND date = ? AND game = ? AND ref IS NULL"
     ).bind(ref, id, date, game).run();
   }
+  return docketJson({ ok: true });
+}
+
+// ─── Back the winners (14 Nov 2026) ─────────────────────────────────────────
+// GET /api/rank: each game's distinct players and distinct finishers over the last
+// 14 UK days. Finishers is popularity times finish rate, so ranking by it puts first
+// the games a newcomer is most likely to enjoy all the way through. guff-bar.js orders
+// Next up by it for anyone who hasn't chosen their own games, the hub does the same,
+// and the newcomer card suggests the top one. Aggregates only, cached for an hour.
+async function serveRank(request, env, ctx) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+  const cache = caches.default, key = new Request("https://groupie-cache.internal/api/rank");
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  const from = addDays(todayISO(), -13);
+  const [vis, fin] = await Promise.all([
+    env.DB.prepare("SELECT game, COUNT(DISTINCT id) AS n FROM visits WHERE date >= ? GROUP BY game").bind(from).all(),
+    env.DB.prepare("SELECT CASE WHEN game = 'spellbound1' THEN 'spellbound' ELSE game END AS g, COUNT(DISTINCT id) AS n FROM league_scores WHERE date >= ? GROUP BY g").bind(from).all(),
+  ]);
+  const players = Object.fromEntries((vis.results || []).map((r) => [r.game, r.n]));
+  const finishers = Object.fromEntries((fin.results || []).map((r) => [r.g, r.n]));
+  const games = [...DOCKET_GAMES].filter((g) => g !== "twentee").map((g) => ({
+    key: g, players: players[g] || 0, finishers: finishers[g] || 0,
+    finishRate: players[g] ? Math.min(100, Math.round((100 * (finishers[g] || 0)) / players[g])) : null,
+  })).sort((a, b) => b.finishers - a.finishers || b.players - a.players);
+  const res = new Response(JSON.stringify({ from, to: todayISO(), order: games.map((g) => g.key), games }), {
+    headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600", ...DOCKET_CORS },
+  });
+  ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+
+// ─── The Friday email list, counted once a day (14 Nov 2026) ─────────────────
+// Resend keeps the list (one segment shared by Whenly, Pub Quiz Daily, What Word and
+// Groupie) but no history: each contact only has created_at and unsubscribed. So the
+// daily cron counts it here, and Guff stats reads the counts:
+//   newsletter_daily  one row per UK day: everyone in the segment, how many can be
+//                     mailed, how many have unsubscribed (unsubscribes in a period = the
+//                     rise in that number, from the first snapshot on)
+//   newsletter_adds   contacts per UK day of joining, rebuilt from created_at each run, so
+//                     sign-ups go back to the start of the list
+// Counts only: no addresses are stored.
+async function ensureNewsletter(env) {
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS newsletter_daily (date TEXT PRIMARY KEY, total INTEGER NOT NULL, mailable INTEGER NOT NULL, unsubscribed INTEGER NOT NULL, at TEXT NOT NULL DEFAULT (datetime('now')))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS newsletter_adds (date TEXT PRIMARY KEY, n INTEGER NOT NULL)"),
+  ]);
+}
+async function snapshotNewsletter(env) {
+  if (!env.RESEND_API_KEY || !env.RESEND_SEGMENT_ID) return { skipped: "no Resend key" };
+  await ensureNewsletter(env);
+  let after = null, total = 0, unsub = 0, pages = 0;
+  const adds = {};
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" });
+  do {
+    const u = `https://api.resend.com/contacts?segment_id=${encodeURIComponent(env.RESEND_SEGMENT_ID)}&limit=100${after ? `&after=${after}` : ""}`;
+    const res = await fetch(u, { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } });
+    if (!res.ok) throw new Error(`Resend contacts ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const d = await res.json();
+    const rows = d.data || [];
+    for (const c of rows) {
+      total++;
+      if (c.unsubscribed) unsub++;
+      const t = new Date(String(c.created_at || "").replace(" ", "T").replace(/\+00$/, "Z"));
+      if (!isNaN(t)) { const k = day.format(t); adds[k] = (adds[k] || 0) + 1; }
+    }
+    after = d.has_more && rows.length ? rows[rows.length - 1].id : null;
+    pages++;
+  } while (after && pages < 200);
+  const today = todayISO();
+  await env.DB.batch([
+    env.DB.prepare("INSERT OR REPLACE INTO newsletter_daily (date, total, mailable, unsubscribed) VALUES (?, ?, ?, ?)").bind(today, total, total - unsub, unsub),
+    env.DB.prepare("DELETE FROM newsletter_adds"),
+    ...Object.entries(adds).map(([k, n]) => env.DB.prepare("INSERT INTO newsletter_adds (date, n) VALUES (?, ?)").bind(k, n)),
+  ]);
+  return { date: today, total, mailable: total - unsub, unsubscribed: unsub };
+}
+// POST /api/newsletter-snapshot: take today's count now rather than waiting for the cron.
+// At most once an hour, so it can't be used to run up Resend calls.
+async function serveNewsletterSnapshot(request, env) {
+  if (request.method !== "POST") return json({ error: "POST only" }, 405);
+  await ensureNewsletter(env);
+  const last = await env.DB.prepare("SELECT at FROM newsletter_daily ORDER BY date DESC LIMIT 1").first();
+  if (last && Date.now() - Date.parse(last.at.replace(" ", "T") + "Z") < 3600e3) return json({ ok: true, fresh: "already counted in the last hour" });
+  return json({ ok: true, ...(await snapshotNewsletter(env)) });
+}
+
+// ─── Events: what happens between opening a game and finishing it (14 Nov 2026) ───
+// guff-bar.js sends a handful of anonymous moments, each at most once per id, day,
+// game and kind: the first touch on the game, a script error, Next up tapped, and the
+// newcomer card (shown, or held back for the comparison group, tapped, closed).
+// Read by Guff stats (stats.carlosfandango.net). Kept 60 days, like visits.
+const EVENT_KINDS = new Set(["touch", "error", "next_click", "nudge_shown", "nudge_control", "nudge_click", "nudge_close", "hub_click"]);
+let eventsReady = false;
+async function ensureEvents(env) {
+  if (eventsReady) return;
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS guff_events (
+    id TEXT NOT NULL, date TEXT NOT NULL, game TEXT NOT NULL, ev TEXT NOT NULL, detail TEXT,
+    at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (id, date, game, ev))`).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_guff_events_date ON guff_events(date, game, ev)").run();
+  eventsReady = true;
+}
+async function serveEvent(request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+  if (request.method !== "POST") return docketJson({ error: "POST only" }, 405);
+  let body = {};
+  try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+  const today = todayISO();
+  const id = typeof body.id === "string" ? body.id : "";
+  const date = typeof body.date === "string" ? body.date : today;
+  const game = typeof body.game === "string" ? body.game : "";
+  const ev = typeof body.ev === "string" ? body.ev : "";
+  const detail = typeof body.detail === "string" ? body.detail.replace(/[^a-z0-9_-]/gi, "").slice(0, 24) || null : null;
+  if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+  if (!DOCKET_GAMES.has(game) && game !== "hub") return docketJson({ error: "Unknown game" }, 400);
+  if (!EVENT_KINDS.has(ev)) return docketJson({ error: "Unknown event" }, 400);
+  if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
+  await ensureEvents(env);
+  await env.DB.prepare("INSERT OR IGNORE INTO guff_events (id, date, game, ev, detail) VALUES (?, ?, ?, ?, ?)").bind(id, date, game, ev, detail).run();
   return docketJson({ ok: true });
 }
 
@@ -1268,6 +1390,11 @@ async function runScheduled(env) {
   await env.DB.prepare("DELETE FROM visits WHERE date < ?")
     .bind(addDays(todayISO(), -60)).run()
     .catch((err) => console.error("Visits prune failed:", err));
+  await env.DB.prepare("DELETE FROM guff_events WHERE date < ?")
+    .bind(addDays(todayISO(), -60)).run()
+    .catch(() => {}); // (the table appears with the first event)
+
+  await snapshotNewsletter(env).catch((err) => console.error("Newsletter count failed:", err));
 
   const report = await filePending(env, todayISO());
   const after = await queueDepth(env);

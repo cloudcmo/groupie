@@ -328,15 +328,16 @@
     return eraWords().miss + (oneAway ? " · one away" : "");
   }
 
-  // The opt-out (12 Nov 2026): on any day but Wednesday, a small link under
-  // the masthead switches to the classic look, and back. Saved per browser.
+  // The switch (12 Nov 2026, turned round 14 Nov 2026): the classic look is the
+  // default. On any day but Wednesday (whose era is the classic look), a small link
+  // above the board offers today's era, for today only; tomorrow starts classic again.
   function updateEraToggle() {
     const btn = document.getElementById("era-toggle");
     if (!btn) return;
     const nat = era.natural || { key: era.key, name: era.name };
     if (era.forced || nat.key === "wed") { btn.hidden = true; return; }
     btn.hidden = false;
-    btn.textContent = era.classic ? `try today's look: ${nat.name}` : "prefer the classic look?";
+    btn.textContent = era.classic ? `try today's look: ${nat.name}` : "back to the classic look";
     btn.onclick = () => {
       GroupieEra.setClassic(!era.classic);
       location.reload();

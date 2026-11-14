@@ -62,7 +62,11 @@
      app.js calls GroupieEra.apply(date) again once the grid is known (back
      grids keep their own day's era). ?era=sat previews any day.
      12 Nov 2026: players can opt out to the classic look (localStorage
-     groupie_classic = "1"); the masthead link in app.js toggles it. */
+     groupie_classic = "1"); the masthead link in app.js toggles it.
+     14 Nov 2026 (Carl): the other way round. Everyone gets the classic look; the
+     quiet link above the board offers today's era, and choosing it lasts for that
+     UK day only (localStorage groupie_era_on = the date). Tomorrow it is classic
+     again. groupie_classic is no longer read. */
   (function(){
     var E={0:["sun","shooter HUD","Black+Ops+One&family=Rajdhani:wght@600;700&family=Share+Tech+Mono"],
       1:["mon","bat and ball","Silkscreen:wght@400;700&family=Space+Mono:wght@400;700"],
@@ -72,8 +76,9 @@
       5:["fri","16-bit","Pixelify+Sans:wght@500;700&family=Rubik:wght@600;700"],
       6:["sat","sports arcade","Tiny5&family=Doto:wght@900&family=Barlow+Semi+Condensed:wght@500;700"]};
     var BG={sun:"#11140f",mon:"#000000",tue:"#000000",wed:"#020308",thu:"#d7d7d7",fri:"#3a8cff",sat:"#2e7d32"};
-    var loaded={}, cur=null, CK="groupie_classic";
-    function classicPref(){ try{ return localStorage.getItem(CK)==="1"; }catch(err){ return false; } }
+    var loaded={}, cur=null, OK="groupie_era_on";
+    function ukDay(){ try{ return new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/London",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()); }catch(err){ return new Date().toISOString().slice(0,10); } }
+    function classicPref(){ try{ return localStorage.getItem(OK)!==ukDay(); }catch(err){ return true; } }
     function forced(){ return (location.search.match(/[?&]era=(mon|tue|wed|thu|fri|sat|sun)\b/)||[])[1]||null; }
     function natural(iso){
       var ok=iso&&/^\d{4}-\d\d-\d\d$/.test(iso)&&iso!=="0000-00-00";
@@ -94,7 +99,7 @@
       var m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute("content",BG[e[0]]);
       cur={key:e[0],name:e[1],natural:{key:nat[0],name:nat[1]},classic:!f&&classicPref(),forced:!!f}; return cur;
     }
-    function setClassic(on){ try{ if(on) localStorage.setItem(CK,"1"); else localStorage.removeItem(CK); }catch(err){} }
+    function setClassic(on){ try{ if(on) localStorage.removeItem(OK); else localStorage.setItem(OK,ukDay()); }catch(err){} }
     window.GroupieEra={apply:apply,get:function(){return cur;},setClassic:setClassic};
     try{ apply(null); }catch(err){}
   })();
