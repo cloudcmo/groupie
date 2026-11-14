@@ -139,6 +139,7 @@ const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee",
 // read from /api/league/board.
 const LEAGUE_ONLY_GAMES = new Set(["whenlyfootball"]);
 const isLeagueGame = (g) => DOCKET_GAMES.has(g) || LEAGUE_ONLY_GAMES.has(g);
+const LEAGUE_GAMES = new Set([...DOCKET_GAMES, ...LEAGUE_ONLY_GAMES]);
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -874,7 +875,7 @@ async function serveLeague(url, request, env, path) {
   // Cheers on scores (27 Oct 2026): /api/league/cheer, /cheers/*, /cheered. See src/cheers.js.
   if (path === "/api/league/cheer" || path.startsWith("/api/league/cheers/") || path === "/api/league/cheered") {
     try {
-      const res = await serveCheers(url, request, env, path, { json: docketJson, validId: validDocketId, games: DOCKET_GAMES });
+      const res = await serveCheers(url, request, env, path, { json: docketJson, validId: validDocketId, games: LEAGUE_GAMES });
       if (res) return res;
     } catch (err) {
       console.error(`${path} failed:`, err);
@@ -1197,6 +1198,11 @@ async function serveLeague(url, request, env, path) {
        LIMIT ?`
     ).bind(game, BOARD_ROWS).all();
     const all = { rows: (best || []).map((r, i) => ({ rank: i + 1, initials: r.ini, score: r.score, max: r.max, display: r.display, ms: r.ms, date: r.d })) };
+    // Cheers on the scores shown (14 Nov 2026), as `ch: [{ e, by }]`, the same as the main league
+    const dayRows = todayT.rows.slice();
+    if (todayT.me && !dayRows.includes(todayT.me)) dayRows.push(todayT.me);
+    await attachCheers(env, "today", today, { [game]: dayRows });
+    await attachCheers(env, "all", null, { [game]: all.rows });
     return docketJson({
       game, today, initials: myIni,
       day: todayT, week, month: { ...month, champs: prevMonth.rows.slice(0, 3), prev: { from: prevFrom, to: prevTo } }, all,
