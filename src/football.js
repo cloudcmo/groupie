@@ -41,7 +41,10 @@ export const CLUBS = [
 ];
 const CLUB_SET = new Set(CLUBS);
 const GAME = "whenlyfootball";
-const CLUB_MIN_SCORES = 3;
+// Clubs need at least this many scores to appear, but only once the game has more than
+// CLUB_MIN_FROM players; until then every club with a fan shows (14 Nov 2026, Carl:
+// a minimum left the table empty).
+const CLUB_MIN_SCORES = 3, CLUB_MIN_FROM = 40;
 
 let ready = false;
 async function ensure(env) {
@@ -116,6 +119,10 @@ export async function serveFootball(url, request, env, path, h) {
   if (path === "/api/wf/clubs" && request.method === "GET") {
     const days = Math.max(1, Math.min(365, parseInt(url.searchParams.get("days"), 10) || 30));
     const from = addDays(today, -(days - 1));
+    const pc = await env.DB.prepare(
+      "SELECT COUNT(DISTINCT p.initials) AS n FROM league_scores s JOIN players p ON p.id = s.id WHERE s.game = ?"
+    ).bind(GAME).first();
+    const min = (pc?.n || 0) > CLUB_MIN_FROM ? CLUB_MIN_SCORES : 1;
     const { results } = await env.DB.prepare(
       `WITH d AS (
          SELECT p.initials AS ini, s.date, MAX(s.score) AS score
@@ -128,9 +135,9 @@ export async function serveFootball(url, request, env, path, h) {
        WHERE c.club <> 'Another club'
        GROUP BY c.club HAVING COUNT(*) >= ?
        ORDER BY avg DESC, scores DESC, c.club ASC`
-    ).bind(GAME, from, today, CLUB_MIN_SCORES).all();
+    ).bind(GAME, from, today, min).all();
     const rows = (results || []).map((r, i) => ({ rank: i + 1, club: r.club, avg: Math.round(r.avg * 10) / 10, scores: r.scores, fans: r.fans }));
-    return json({ from, to: today, days, min: CLUB_MIN_SCORES, rows });
+    return json({ from, to: today, days, min, players: pc?.n || 0, rows });
   }
 
   return json({ error: "Not found" }, 404);
