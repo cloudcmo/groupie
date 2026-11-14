@@ -1185,6 +1185,9 @@ async function serveLeague(url, request, env, path) {
 
     const todayRows = await daily(today, today);
     const todayT = ranked(todayRows.map((r) => ({ ...r })), (r) => ({ initials: r.ini, score: r.score, max: r.max, display: r.display, ms: r.ms, at: r.at }));
+    // Every score on today's board as [score, ms], so a game can say "better than 72% of today's
+    // players" for anyone, signed in or not (14 Nov 2026, Whenly Football's brag line).
+    todayT.all = todayRows.slice(0, 2000).map((r) => [r.score, r.ms]);
     const [week, month, prevMonth] = await Promise.all([period(weekFrom, today), period(monthFrom, today), period(prevFrom, prevTo)]);
     const { results: best } = await env.DB.prepare(
       `SELECT p.initials AS ini, s.score, s.max, s.display, s.ms, s.date AS d
