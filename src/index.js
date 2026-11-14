@@ -7,6 +7,7 @@ import { handleSubscribe } from "./subscribe.js";
 
 import { MOVE, movedResponse } from "./moved.js";
 import { serveCheers, attachCheers, cheersReceived, cheersNews, guffbotSalute } from "./cheers.js";
+import { serveFootball } from "./football.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -36,6 +37,8 @@ export default {
       if (path === "/api/newsletter-snapshot") return await serveNewsletterSnapshot(request, env);
       if (path === "/api/daystats") return await serveDayStats(url, request, env);
       if (path.startsWith("/api/league")) return await serveLeague(url, request, env, path);
+      // Whenly Football extras (14 Nov 2026): crowd dots and the club table. See src/football.js.
+      if (path.startsWith("/api/wf/")) return await serveFootball(url, request, env, path, { json: docketJson, validId: validDocketId, today: todayISO(), addDays, cors: DOCKET_CORS });
       if (path === "/api/generate") return await serveGenerate(request, env);
       if (path === "/api/subscribe") return await handleSubscribe(request, env);
       // SEO files are generated here (not static) so they always reflect the
