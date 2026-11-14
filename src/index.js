@@ -129,6 +129,13 @@ async function serveHealth(env) {
 const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet", "wordraver", "gufftumble"]);
 // wordraver (Word Raver, was Guff3000) joined on 5 Nov 2026, Guff game twelve.
 // gufftumble (Guff Tumble) joined on 11 Nov 2026, the tenth of the daily ten (after three became classic games).
+// League-only games (14 Nov 2026): games that file scores on the league but are not in the
+// docket, the bar or the hub (yet). Kept out of DOCKET_GAMES on purpose, because the docket
+// splices the game key into a column name and these games have no docket column.
+// whenlyfootball: Whenly Football (football.carlosfandango.net), with its own in-game league
+// read from /api/league/board.
+const LEAGUE_ONLY_GAMES = new Set(["whenlyfootball"]);
+const isLeagueGame = (g) => DOCKET_GAMES.has(g) || LEAGUE_ONLY_GAMES.has(g);
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -956,7 +963,7 @@ async function serveLeague(url, request, env, path) {
     const msRaw = parseInt(body.ms, 10);
     const ms = Number.isFinite(msRaw) && msRaw > 0 && msRaw < 86400000 ? msRaw : null;
     if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
-    if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+    if (!isLeagueGame(game)) return docketJson({ error: "Unknown game" }, 400);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
     // Today or yesterday only, and never twice: first score of the day stands.
     if (date !== today && date !== addDays(today, -1))
@@ -1007,7 +1014,7 @@ async function serveLeague(url, request, env, path) {
     // a cheer from him on the league so a great score never sits there unloved.
     // "Maximum" is only trusted where the top score is fixed (3/3, 24/24, 50/50, 10/10), the
     // same list the bar's party uses; open-ended games say `perfect` when they know.
-    const SALUTE_FIXED = new Set(["pqd", "groupie", "whatword", "whenly"]);
+    const SALUTE_FIXED = new Set(["pqd", "groupie", "whatword", "whenly", "whenlyfootball"]);
     const perfect = body.perfect === true || (SALUTE_FIXED.has(game) && max > 0 && score >= max);
     if (stored && p && score > 0 && (record || perfect))
       await guffbotSalute(env, game, date, p.initials);
@@ -1095,7 +1102,7 @@ async function serveLeague(url, request, env, path) {
     const game = url.searchParams.get("game") || "";
     const date = url.searchParams.get("date") || "";
     const ini = String(url.searchParams.get("ini") || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
-    if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+    if (!isLeagueGame(game)) return docketJson({ error: "Unknown game" }, 400);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
     if (ini.length !== 3) return docketJson({ error: "Bad initials" }, 400);
     const row = await env.DB.prepare(
@@ -1109,6 +1116,85 @@ async function serveLeague(url, request, env, path) {
     let replay = null;
     try { replay = JSON.parse(row.data); } catch (e) {}
     return docketJson({ game, date, initials: ini, score: row.score, display: row.display, ms: row.ms, replay });
+  }
+
+  // GET /api/league/board?game=whenlyfootball&id= → one game's whole league in one call
+  // (14 Nov 2026, Carl, for Whenly Football's own league page):
+  //   today: today's scores, best first (score, then timed above untimed, then fastest).
+  //   week:  a ROLLING seven days (today and the six before), at least BOARD_MIN days played
+  //          to qualify; ranked by average score, then average time (quicker first).
+  //   month: the calendar month so far, same rule and ranking; `champs` is last month's top three.
+  //   all:   the best single scores ever, whoever set them, a tie to whoever got there first.
+  // One row per initials per day (two devices on one day: the better score). `me` is the
+  // asker's own row in each table with its position, so they can see where they stand even
+  // outside the top rows, plus how many days they have played in each window.
+  if (path === "/api/league/board" && request.method === "GET") {
+    const game = url.searchParams.get("game") || "";
+    if (!isLeagueGame(game)) return docketJson({ error: "Unknown game" }, 400);
+    const BOARD_ROWS = 25, BOARD_MIN = 3;
+    const id = url.searchParams.get("id") || "";
+    const meRow = validDocketId(id) ? await env.DB.prepare("SELECT initials FROM players WHERE id = ?").bind(id).first() : null;
+    const myIni = meRow ? meRow.initials : null;
+    const weekFrom = addDays(today, -6);
+    const monthFrom = today.slice(0, 8) + "01";
+    const prevTo = addDays(monthFrom, -1), prevFrom = prevTo.slice(0, 8) + "01";
+
+    const daily = async (from, to) => {
+      const { results } = await env.DB.prepare(
+        `WITH r AS (
+           SELECT p.initials AS ini, s.date AS d, s.score, s.max, s.display, s.ms, s.at, s.rowid AS rid,
+                  ROW_NUMBER() OVER (PARTITION BY p.initials, s.date
+                    ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.rowid ASC) AS k
+           FROM league_scores s JOIN players p ON p.id = s.id
+           WHERE s.game = ? AND s.date BETWEEN ? AND ?
+         )
+         SELECT ini, d, score, max, display, ms, at FROM r WHERE k = 1
+         ORDER BY score DESC, (ms IS NULL) ASC, ms ASC, rid ASC`
+      ).bind(game, from, to).all();
+      return results || [];
+    };
+    const ranked = (rows, map) => {
+      const out = [];
+      let mine = null;
+      rows.forEach((r, i) => {
+        const row = { rank: i + 1, ...map(r) };
+        if (i < BOARD_ROWS) out.push(row);
+        if (myIni && r.ini === myIni && !mine) mine = row;
+      });
+      return { rows: out, total: rows.length, me: mine };
+    };
+    const period = async (from, to) => {
+      const days = await daily(from, to);
+      const by = new Map();
+      for (const r of days) {
+        const p = by.get(r.ini) || { ini: r.ini, days: 0, sum: 0, msSum: 0, timed: 0, max: r.max };
+        p.days++; p.sum += r.score;
+        if (r.ms != null) { p.msSum += r.ms; p.timed++; }
+        by.set(r.ini, p);
+      }
+      const all = [...by.values()].map((p) => ({ ini: p.ini, days: p.days, avg: p.sum / p.days, ms: p.timed ? p.msSum / p.timed : null, max: p.max }));
+      const myDays = myIni ? (by.get(myIni)?.days || 0) : 0;
+      const q = all.filter((p) => p.days >= BOARD_MIN)
+        .sort((a, b) => b.avg - a.avg || (a.ms == null) - (b.ms == null) || (a.ms || 0) - (b.ms || 0) || b.days - a.days || a.ini.localeCompare(b.ini));
+      const t = ranked(q, (p) => ({ initials: p.ini, days: p.days, avg: Math.round(p.avg * 10) / 10, max: p.max, ms: p.ms != null ? Math.round(p.ms) : null }));
+      return { from, to, min: BOARD_MIN, ...t, myDays, chasing: all.length - q.length };
+    };
+
+    const todayRows = await daily(today, today);
+    const todayT = ranked(todayRows.map((r) => ({ ...r })), (r) => ({ initials: r.ini, score: r.score, max: r.max, display: r.display, ms: r.ms, at: r.at }));
+    const [week, month, prevMonth] = await Promise.all([period(weekFrom, today), period(monthFrom, today), period(prevFrom, prevTo)]);
+    const { results: best } = await env.DB.prepare(
+      `SELECT p.initials AS ini, s.score, s.max, s.display, s.ms, s.date AS d
+       FROM league_scores s JOIN players p ON p.id = s.id
+       WHERE s.game = ? AND s.score > 0
+       ORDER BY s.score DESC, (s.ms IS NULL) ASC, s.ms ASC, s.date ASC, s.rowid ASC
+       LIMIT ?`
+    ).bind(game, BOARD_ROWS).all();
+    const all = { rows: (best || []).map((r, i) => ({ rank: i + 1, initials: r.ini, score: r.score, max: r.max, display: r.display, ms: r.ms, date: r.d })) };
+    return docketJson({
+      game, today, initials: myIni,
+      day: todayT, week, month: { ...month, champs: prevMonth.rows.slice(0, 3), prev: { from: prevFrom, to: prevTo } }, all,
+    });
   }
 
   // GET /api/league?mode=week|month → who is doing best this week / this month, per game
