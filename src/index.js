@@ -209,7 +209,7 @@ async function serveVisit(request, env) {
   const rawRef = typeof body.ref === "string" ? body.ref.toLowerCase().trim() : "";
   const ref = VISIT_REF.test(rawRef) ? rawRef : null;
   if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
-  if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+  if (!isLeagueGame(game)) return docketJson({ error: "Unknown game" }, 400);
   if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
 
   await env.DB.prepare(
@@ -334,7 +334,7 @@ async function serveEvent(request, env) {
   const ev = typeof body.ev === "string" ? body.ev : "";
   const detail = typeof body.detail === "string" ? body.detail.replace(/[^a-z0-9_-]/gi, "").slice(0, 24) || null : null;
   if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
-  if (!DOCKET_GAMES.has(game) && game !== "hub") return docketJson({ error: "Unknown game" }, 400);
+  if (!isLeagueGame(game) && game !== "hub") return docketJson({ error: "Unknown game" }, 400);
   if (!EVENT_KINDS.has(ev)) return docketJson({ error: "Unknown event" }, 400);
   if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
   await ensureEvents(env);
