@@ -356,7 +356,7 @@ async function serveSources(url, request, env) {
   const date = url.searchParams.get("date") || todayISO();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
-  const games = [...DOCKET_GAMES];;
+  const games = [...DOCKET_GAMES];
   const out = {};
   for (const g of games) out[g] = { visits: 0, completed: 0, refs: {} };
 
