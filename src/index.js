@@ -129,7 +129,7 @@ async function serveHealth(env) {
 // wagdaily (Words and Guff Daily) took Twentee's place on 20 Sept 2026. twentee stays accepted
 // so its column and old rows keep working; its page stops reporting once the bar drops it.
 // wordminer and guffitaire joined the canon on 25 Sept 2026 (Guff games nine and ten).
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet", "wordraver", "gufftumble"]);
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet", "wordraver", "gufftumble", "whenlyfootball"]);
 // wordraver (Word Raver, was Guff3000) joined on 5 Nov 2026, Guff game twelve.
 // gufftumble (Guff Tumble) joined on 11 Nov 2026, the tenth of the daily ten (after three became classic games).
 // League-only games (14 Nov 2026): games that file scores on the league but are not in the
@@ -137,9 +137,33 @@ const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee",
 // splices the game key into a column name and these games have no docket column.
 // whenlyfootball: Whenly Football (football.carlosfandango.net), with its own in-game league
 // read from /api/league/board.
-const LEAGUE_ONLY_GAMES = new Set(["whenlyfootball"]);
+// 15 Nov 2026 (Carl): Whenly Football joined the daily games, so it moved into DOCKET_GAMES
+// (docket column added by migrations/2026-11-15-whenlyfootball.sql). None league-only now.
+const LEAGUE_ONLY_GAMES = new Set([]);
 const isLeagueGame = (g) => DOCKET_GAMES.has(g) || LEAGUE_ONLY_GAMES.has(g);
 const LEAGUE_GAMES = new Set([...DOCKET_GAMES, ...LEAGUE_ONLY_GAMES]);
+
+// The docket columns that really exist on the live D1, read once per isolate. A game added
+// to DOCKET_GAMES before its ALTER TABLE has run (the Guff Tumble slip, 11 Nov 2026) is
+// simply left out of the docket's SQL until the column is there, instead of breaking every
+// game's ticks. Re-read after a minute, so the column is picked up without a redeploy.
+let docketColsAt = 0, docketCols = null;
+async function docketGames(env) {
+  if (!docketCols || Date.now() - docketColsAt > 60000) {
+    try {
+      const { results } = await env.DB.prepare("PRAGMA table_info(docket)").all();
+      docketCols = new Set((results || []).map((r) => r.name));
+      docketColsAt = Date.now();
+    } catch (e) {
+      if (!docketCols) return [...DOCKET_GAMES].filter((g) => g !== "whenlyfootball");
+    }
+  }
+  return [...DOCKET_GAMES].filter((g) => docketCols.has(g));
+}
+async function docketRow(env, id, date) {
+  const cols = await docketGames(env);
+  return env.DB.prepare(`SELECT ${cols.join(", ")} FROM docket WHERE id = ? AND date = ?`).bind(id, date).first();
+}
 
 const DOCKET_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -159,9 +183,7 @@ async function serveDocket(url, request, env) {
     if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
-    const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet, wordraver, gufftumble FROM docket WHERE id = ? AND date = ?"
-    ).bind(id, date).first();
+    const row = await docketRow(env, id, date);
     return docketJson({ date, played: docketPlayed(row) });
   }
 
@@ -178,14 +200,13 @@ async function serveDocket(url, request, env) {
     if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
 
     // `game` is allowlisted above, so it is safe to splice into the column list.
-    await env.DB.prepare(
+    // (A game whose column is not on the live D1 yet is skipped, see docketGames.)
+    if ((await docketGames(env)).includes(game)) await env.DB.prepare(
       `INSERT INTO docket (id, date, ${game}) VALUES (?, ?, 1)
        ON CONFLICT(id, date) DO UPDATE SET ${game} = 1`
     ).bind(id, date).run();
 
-    const row = await env.DB.prepare(
-      "SELECT pqd, whenly, whatword, groupie, twentee, spellbound, guffinoes, hexadec, wagdaily, wordminer, guffitaire, helmet, wordraver, gufftumble FROM docket WHERE id = ? AND date = ?"
-    ).bind(id, date).first();
+    const row = await docketRow(env, id, date);
     return docketJson({ date, played: docketPlayed(row) });
   }
 
@@ -359,6 +380,7 @@ async function serveSources(url, request, env) {
   const games = [...DOCKET_GAMES];
   const out = {};
   for (const g of games) out[g] = { visits: 0, completed: 0, refs: {} };
+  const cols = await docketGames(env); // only columns that exist go into the docket SQL
 
   // TOTALS come from a query with no ref join in it at all.
   //
@@ -377,7 +399,7 @@ async function serveSources(url, request, env) {
     out[r.game].visits += r.n;
   }
 
-  const sums = games.map((g) => `SUM(d.${g}) AS ${g}`).join(", ");
+  const sums = cols.map((g) => `SUM(d.${g}) AS ${g}`).join(", ");
   const doneTotals = await env.DB.prepare(
     `SELECT ${sums} FROM docket d WHERE d.date = ?`
   ).bind(date).first();
@@ -684,6 +706,7 @@ function docketPlayed(row) {
     helmet: !!row?.helmet,
     wordraver: !!row?.wordraver,
     gufftumble: !!row?.gufftumble,
+    whenlyfootball: !!row?.whenlyfootball,
   };
 }
 

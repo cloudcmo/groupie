@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS docket (
   helmet INTEGER NOT NULL DEFAULT 0,     -- Helmet, added 16 Oct 2026 (live: ALTER TABLE docket ADD COLUMN)
   wordraver INTEGER NOT NULL DEFAULT 0,  -- Word Raver, added 5 Nov 2026 (live: ALTER TABLE docket ADD COLUMN)
   gufftumble INTEGER NOT NULL DEFAULT 0, -- Guff Tumble, added 11 Nov 2026 (live: ALTER TABLE docket ADD COLUMN)
+  whenlyfootball INTEGER NOT NULL DEFAULT 0, -- Whenly Football, added 15 Nov 2026 (migrations/2026-11-15-whenlyfootball.sql)
   PRIMARY KEY (id, date)
 );
 
