@@ -356,7 +356,7 @@ async function serveSources(url, request, env) {
   const date = url.searchParams.get("date") || todayISO();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
 
-  const games = [...DOCKET_GAMES];
+  const games = [...DOCKET_GAMES];;
   const out = {};
   for (const g of games) out[g] = { visits: 0, completed: 0, refs: {} };
 
@@ -432,7 +432,7 @@ async function serveDayStats(url, request, env) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
   const game = url.searchParams.get("game") || "";
   const date = url.searchParams.get("date") || todayISO();
-  if (!DOCKET_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+  if (!isLeagueGame(game)) return docketJson({ error: "Unknown game" }, 400);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return docketJson({ error: "Bad date" }, 400);
   const agg = await env.DB.prepare(
     `SELECT COUNT(*) AS finished, AVG(score) AS avgScore, AVG(ms) AS avgMs, MAX(max) AS max,
