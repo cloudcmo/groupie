@@ -221,6 +221,23 @@ async function serveDocket(url, request, env) {
 // and did they finish?" — the daily report reads it via /api/sources.
 const VISIT_REF = /^[a-z0-9_-]{1,24}$/;
 
+// ─── Real players only (18 Nov 2026, Carl: "I'm only interested in real players") ─────
+// On 17 Nov something loaded Whenly Football ~480 times, ran its code and was counted as a
+// visitor each time (fresh id, no ref, never tapped anything). Visits and events from
+// crawlers, link previewers and automated browsers are now quietly dropped: by user agent
+// here, and the games also send `bot: true` when the browser says it is automated
+// (navigator.webdriver). The reply is still ok, so nothing retries.
+const BOT_UA = /bot\b|bot\/|crawl|spider|slurp|headless|preview|monitor|lighthouse|pagespeed|facebookexternalhit|whatsapp|telegram|discord|skype|embedly|python|curl|wget|go-http|java\/|okhttp|axios|node-fetch|undici|phantom|puppeteer|playwright|selenium|chrome-lighthouse/i;
+function isBotVisit(request, body) {
+  if (body && body.bot === true) return true;
+  const ua = request.headers.get("User-Agent") || "";
+  if (ua.length < 20) return true;
+  if (BOT_UA.test(ua)) return true;
+  const cf = request.cf || {};
+  if (cf.verifiedBotCategory || (cf.botManagement && cf.botManagement.verifiedBot)) return true;
+  return false;
+}
+
 async function serveVisit(request, env) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
   if (request.method !== "POST") return docketJson({ error: "POST only" }, 405);
@@ -236,6 +253,7 @@ async function serveVisit(request, env) {
   if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
   if (!isLeagueGame(game)) return docketJson({ error: "Unknown game" }, 400);
   if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
+  if (isBotVisit(request, body)) return docketJson({ ok: true, skipped: "bot" });
 
   await env.DB.prepare(
     "INSERT OR IGNORE INTO visits (id, date, game, ref) VALUES (?, ?, ?, ?)"
@@ -362,6 +380,7 @@ async function serveEvent(request, env) {
   if (!isLeagueGame(game) && game !== "hub") return docketJson({ error: "Unknown game" }, 400);
   if (!EVENT_KINDS.has(ev)) return docketJson({ error: "Unknown event" }, 400);
   if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
+  if (isBotVisit(request, body)) return docketJson({ ok: true, skipped: "bot" });
   await ensureEvents(env);
   await env.DB.prepare("INSERT OR IGNORE INTO guff_events (id, date, game, ev, detail) VALUES (?, ?, ?, ?, ?)").bind(id, date, game, ev, detail).run();
   return docketJson({ ok: true });
