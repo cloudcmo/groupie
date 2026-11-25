@@ -31,6 +31,7 @@ export default {
       if (path === "/api/prefs") return await servePrefs(url, request, env);
       if (path === "/api/visit") return await serveVisit(request, env);
       if (path === "/api/lab-feedback") return await serveLabFeedback(url, request, env);
+      if (path === "/api/lab-play") return await serveLabPlay(request, env);
       if (path === "/api/sources") return await serveSources(url, request, env);
       if (path === "/api/rank") return await serveRank(request, env, ctx);
       if (path === "/api/event") return await serveEvent(request, env);
@@ -703,6 +704,54 @@ async function serveLabFeedback(url, request, env) {
   }
 
   return docketJson({ error: "Not found" }, 404);
+}
+
+// ─── Lab plays (25 Nov 2026) ─────────────────────────────────────────────────
+// Play counts for standalone games that are not Guff games yet (no league, bar or
+// hub), so they stay out of visits, rank and the docket. First game: Manic Guffer.
+// POST /api/lab-play {game, id, date, ev, len?, secs?, tries?, bot?} → { ok }
+//   ev: open (opened the page), practice (started a Practice Pit go), real (started
+//   a real go), score (banked the day's real word: len letters, secs, tries real goes).
+// One row per player, game, day and event; repeats add to n. Bots are dropped the same
+// way as /api/visit. The Worker creates the table on first use (no migration needed).
+const LAB_PLAY_GAMES = new Set(["manic"]);
+const LAB_PLAY_EVENTS = new Set(["open", "practice", "real", "score"]);
+let labPlaysReady = false;
+async function ensureLabPlays(env) {
+  if (labPlaysReady) return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS lab_plays (game TEXT NOT NULL, id TEXT NOT NULL, date TEXT NOT NULL, ev TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 1, len INTEGER, secs REAL, tries INTEGER, at TEXT NOT NULL, PRIMARY KEY (game, id, date, ev))"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_lab_plays_date ON lab_plays(game, date, ev)").run();
+  labPlaysReady = true;
+}
+async function serveLabPlay(request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: DOCKET_CORS });
+  if (request.method !== "POST") return docketJson({ error: "POST only" }, 405);
+  let body = {};
+  try { body = await request.json(); } catch { return docketJson({ error: "Invalid request" }, 400); }
+  const today = todayISO();
+  const game = typeof body.game === "string" ? body.game : "";
+  const id = typeof body.id === "string" ? body.id : "";
+  const date = typeof body.date === "string" ? body.date : today;
+  const ev = typeof body.ev === "string" ? body.ev : "";
+  if (!LAB_PLAY_GAMES.has(game)) return docketJson({ error: "Unknown game" }, 400);
+  if (!LAB_PLAY_EVENTS.has(ev)) return docketJson({ error: "Unknown event" }, 400);
+  if (!validDocketId(id)) return docketJson({ error: "Bad id" }, 400);
+  if (date !== today && date !== addDays(today, -1)) return docketJson({ error: "Bad date" }, 400);
+  if (isBotVisit(request, body)) return docketJson({ ok: true, skipped: "bot" });
+  const num = (v, lo, hi) => (typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi ? v : null);
+  const len = ev === "score" ? num(body.len, 3, 20) : null;
+  const secs = ev === "score" ? num(body.secs, 0, 3600) : null;
+  const tries = ev === "score" ? num(body.tries, 1, 999) : null;
+  await ensureLabPlays(env);
+  await env.DB.prepare(
+    `INSERT INTO lab_plays (game, id, date, ev, n, len, secs, tries, at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+     ON CONFLICT(game, id, date, ev) DO UPDATE SET n = MIN(lab_plays.n + 1, 500), at = excluded.at,
+       len = COALESCE(lab_plays.len, excluded.len), secs = COALESCE(lab_plays.secs, excluded.secs),
+       tries = COALESCE(lab_plays.tries, excluded.tries)`
+  ).bind(game, id, date, ev, len, secs, tries, new Date().toISOString()).run();
+  return docketJson({ ok: true });
 }
 
 function validDocketId(id) {
