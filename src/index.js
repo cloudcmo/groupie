@@ -130,7 +130,9 @@ async function serveHealth(env) {
 // wagdaily (Words and Guff Daily) took Twentee's place on 20 Sept 2026. twentee stays accepted
 // so its column and old rows keep working; its page stops reporting once the bar drops it.
 // wordminer and guffitaire joined the canon on 25 Sept 2026 (Guff games nine and ten).
-const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet", "wordraver", "gufftumble", "whenlyfootball"]);
+const DOCKET_GAMES = new Set(["pqd", "whenly", "whatword", "groupie", "twentee", "spellbound", "guffinoes", "hexadec", "wagdaily", "wordminer", "guffitaire", "helmet", "wordraver", "gufftumble", "whenlyfootball", "manic"]);
+// manic (Manic Guffer, manic.carlosfandango.net) joined the daily games on 27 Nov 2026 (Carl),
+// taking the place of Words and Guff Daily, which became a classic game the same day.
 // wordraver (Word Raver, was Guff3000) joined on 5 Nov 2026, Guff game twelve.
 // gufftumble (Guff Tumble) joined on 11 Nov 2026, the tenth of the daily ten (after three became classic games).
 // League-only games (14 Nov 2026): games that file scores on the league but are not in the
@@ -518,39 +520,70 @@ async function serveDayStats(url, request, env) {
 //   classic: (v2, 11 Nov 2026) the classic games they chose to keep in their
 //          daily games. Hexadec, Spellbound and Guffinoes left the daily list
 //          that day; a classic game is only suggested if it is in here.
-// GET  /api/prefs?id=           → { prefs: {v, order, off, known, classic, at} | null }
+// GET  /api/prefs?id=           → { prefs: {v, wag, order, off, known, classic, at} | null, keep? }
+//   keep: (27 Nov 2026) only when there are no saved prefs: classic games to treat as daily
+//         because they played them in the last two weeks (W&G Daily).
 // POST /api/prefs {id, order, off, known, classic} → { ok: true }
 //
 // Moving old prefs over (Carl, 11 Nov 2026): a player keeps a classic game only if
 // it was switched on in their saved list AND they played it in the last two weeks
 // (docket ticks or league scores, under this id or any id with their initials).
 // Done once, the first time their prefs are read; the answer is saved back.
-const CLASSIC_GAMES = ["hexadec", "spellbound", "guffinoes"];
+//
+// 27 Nov 2026 (Carl): Words and Guff Daily became a classic game too, to make room for
+// Manic Guffer. "Anyone who has chosen to keep it in and plays regularly should see no
+// change." So, by the same two-week rule:
+//  - saved prefs (v2, without the `wag` mark): W&G Daily stays in their games, in the same
+//    place in their order, if it was switched on and they played it in the last 14 days.
+//    Done once, saved back with `wag: 1`.
+//  - no saved prefs (they never edited the hub): GET answers `keep: ["wagdaily"]` for as long
+//    as they keep playing it (any day in the last 14), and the bar and hub then treat it as
+//    one of their daily games in its old place. Worked out afresh on every read.
+const CLASSIC_GAMES = ["hexadec", "spellbound", "guffinoes", "wagdaily"];
+const KEEP_IF_PLAYED = ["wagdaily"];
+async function playedRecently(env, id, initials, games) {
+  const ids = [id];
+  if (initials) {
+    const { results } = await env.DB.prepare("SELECT id FROM players WHERE initials = ? LIMIT 40").bind(initials).all();
+    for (const r of results || []) if (r.id && !ids.includes(r.id)) ids.push(r.id);
+  }
+  const since = addDays(todayISO(), -14);
+  const marks = ids.map(() => "?").join(",");
+  const played = new Set();
+  const cols = new Set(await docketGames(env));
+  const dg = games.filter((g) => cols.has(g));
+  if (dg.length) {
+    const dk = await env.DB.prepare(
+      "SELECT " + dg.map((g) => "MAX(" + g + ") AS " + g).join(", ") + " FROM docket WHERE id IN (" + marks + ") AND date >= ?"
+    ).bind(...ids, since).first();
+    for (const g of dg) if (dk && dk[g]) played.add(g);
+  }
+  const ls = await env.DB.prepare(
+    "SELECT DISTINCT game FROM league_scores WHERE id IN (" + marks + ") AND date >= ? AND game IN (" + games.map(() => "?").join(",") + ")"
+  ).bind(...ids, since, ...games).all();
+  for (const r of ls.results || []) played.add(r.game);
+  return played;
+}
 async function migrateClassic(env, prefs, id, initials) {
   const known = (prefs.known && prefs.known.length) ? prefs.known : (prefs.order || []);
   const off = prefs.off || [];
   const wasOn = CLASSIC_GAMES.filter((k) => !(off.includes(k) && known.includes(k)));
   let keep = [];
   if (wasOn.length) {
-    const ids = [id];
-    if (initials) {
-      const { results } = await env.DB.prepare("SELECT id FROM players WHERE initials = ? LIMIT 40").bind(initials).all();
-      for (const r of results || []) if (r.id && !ids.includes(r.id)) ids.push(r.id);
-    }
-    const since = addDays(todayISO(), -14);
-    const marks = ids.map(() => "?").join(",");
-    const played = new Set();
-    const dk = await env.DB.prepare(
-      "SELECT MAX(hexadec) AS hexadec, MAX(spellbound) AS spellbound, MAX(guffinoes) AS guffinoes FROM docket WHERE id IN (" + marks + ") AND date >= ?"
-    ).bind(...ids, since).first();
-    for (const k of CLASSIC_GAMES) if (dk && dk[k]) played.add(k);
-    const ls = await env.DB.prepare(
-      "SELECT DISTINCT game FROM league_scores WHERE id IN (" + marks + ") AND date >= ? AND game IN ('hexadec','spellbound','guffinoes')"
-    ).bind(...ids, since).all();
-    for (const r of ls.results || []) played.add(r.game);
+    const played = await playedRecently(env, id, initials, CLASSIC_GAMES);
     keep = wasOn.filter((k) => played.has(k));
   }
-  return { v: 2, order: prefs.order || [], off: off.filter((k) => !CLASSIC_GAMES.includes(k)), known: prefs.known || [], classic: keep };
+  return { v: 2, wag: 1, order: prefs.order || [], off: off.filter((k) => !CLASSIC_GAMES.includes(k)), known: prefs.known || [], classic: keep };
+}
+// v2 prefs saved before 27 Nov 2026: only W&G Daily needs deciding.
+async function migrateWag(env, prefs, id, initials) {
+  const known = (prefs.known && prefs.known.length) ? prefs.known : (prefs.order || []);
+  const off = prefs.off || [];
+  const classic = (prefs.classic || []).filter((k) => CLASSIC_GAMES.includes(k));
+  const wasOn = classic.includes("wagdaily") || !(off.includes("wagdaily") && known.includes("wagdaily"));
+  const keep = classic.filter((k) => k !== "wagdaily");
+  if (wasOn && (await playedRecently(env, id, initials, ["wagdaily"])).has("wagdaily")) keep.push("wagdaily");
+  return { ...prefs, v: 2, wag: 1, off: off.filter((k) => !CLASSIC_GAMES.includes(k)), classic: keep };
 }
 let prefsTableReady = false;
 async function ensurePrefsTable(env) {
@@ -583,14 +616,19 @@ async function servePrefs(url, request, env) {
       "SELECT prefs, at FROM guff_prefs WHERE k IN (" + keys.map(() => "?").join(",") + ") ORDER BY at DESC LIMIT 1"
     ).bind(...keys).all();
     const row = results && results[0];
-    if (!row) return docketJson({ prefs: null });
+    if (!row) {
+      let keep = [];
+      try { keep = [...(await playedRecently(env, id, p && p.initials, KEEP_IF_PLAYED))]; } catch (err) { console.error("Keep check failed:", err); }
+      return docketJson({ prefs: null, keep });
+    }
     let prefs = null;
     try { prefs = JSON.parse(row.prefs); } catch { prefs = null; }
-    if (prefs && prefs.v !== 2) {
-      // Saved before the classic games (11 Nov 2026): move over once and save back,
-      // keeping the old timestamp so nothing else about which row wins changes.
+    if (prefs && (prefs.v !== 2 || !prefs.wag)) {
+      // Saved before the classic games (11 Nov 2026), or before W&G Daily joined them
+      // (27 Nov 2026): move over once and save back, keeping the old timestamp so nothing
+      // else about which row wins changes.
       try {
-        const moved = await migrateClassic(env, prefs, id, p && p.initials);
+        const moved = prefs.v !== 2 ? await migrateClassic(env, prefs, id, p && p.initials) : await migrateWag(env, prefs, id, p && p.initials);
         await env.DB.prepare(
           "UPDATE guff_prefs SET prefs = ? WHERE k IN (" + keys.map(() => "?").join(",") + ") AND prefs = ?"
         ).bind(JSON.stringify(moved), ...keys, row.prefs).run();
@@ -614,6 +652,11 @@ async function servePrefs(url, request, env) {
     if (Array.isArray(body.classic)) {
       prefs.v = 2;
       prefs.classic = cleanKeys(body.classic, 10).filter((k) => CLASSIC_GAMES.includes(k));
+      // A hub or bar from before 27 Nov 2026 still thinks W&G Daily is a daily game: if it
+      // is switched on there, keep it on for now and leave off the `wag` mark, so the next
+      // read settles it by the two-week rule.
+      if (body.wag) prefs.wag = 1;
+      else if (prefs.order.includes("wagdaily") && !prefs.off.includes("wagdaily") && !prefs.classic.includes("wagdaily")) prefs.classic.push("wagdaily");
       prefs.off = prefs.off.filter((k) => !CLASSIC_GAMES.includes(k));
     }
     const at = new Date().toISOString();
@@ -775,6 +818,7 @@ function docketPlayed(row) {
     wordraver: !!row?.wordraver,
     gufftumble: !!row?.gufftumble,
     whenlyfootball: !!row?.whenlyfootball,
+    manic: !!row?.manic,
   };
 }
 
